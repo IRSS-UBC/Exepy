@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"github.com/maja42/ember"
@@ -14,7 +15,10 @@ import (
 	"time"
 )
 
-func bootstrap() {
+//go:embed run.bat
+var runScript string
+
+func bootstrap(pure bool) {
 
 	exit := ValidateExecutableHash()
 	if exit {
@@ -29,16 +33,11 @@ func bootstrap() {
 	defer attachments.Close()
 
 	if ValidateHashes(attachments) {
-		fmt.Println("Hashes validated successfully.")
+		fmt.Println("Self-integrity validated successfully.")
 	} else {
 		fmt.Println("Error validating hashes.")
 		return
 	}
-
-	// for each hash, compare the hash of the file to the hash in the map
-	// if any of the hashes do not match, return an error
-
-	// settings hash
 
 	settings, err := GetSettings(attachments)
 	if err != nil {
@@ -106,11 +105,10 @@ func bootstrap() {
 			}
 		}
 
-		// run the setup.py file if configured
-
 		// setup script path is relative to the extracted script directory
 		setupScriptPath := path.Join(settings.ScriptExtractDir, settings.SetupScript)
 
+		// run the setup.py file if configured
 		if settings.SetupScript != "" {
 			if err := common.RunCommand(pythonPath, []string{setupScriptPath}); err != nil {
 				fmt.Println("Error running "+settings.SetupScript+":", err)
@@ -118,47 +116,117 @@ func bootstrap() {
 			}
 		}
 
-		// save a text file to the current directory to indicate that the bootstrap has been run
-		if err := os.WriteFile("bootstrapped", []byte("Bootstrap has been run"), os.ModePerm); err != nil {
-			fmt.Println("Error saving bootstrap text file:", err)
-			return
+		myHash, err := calculateSelfHash()
+
+		err = common.SaveContentsToFile("bootstrapped", myHash)
+		if err != nil {
+			fmt.Println("Error saving hash to file:", err)
 		}
+
+	}
+
+	//TODO: Add some form of hashing of the input files; E.g., make a list of all files present when making the installer and hash them
+	// Save the list of files and their hashes to a file in the installer
+	// When the installer is run, hash the same files and compare them to the saved hashes
+
+	EmbeddedIntegrityHashes := attachments.Reader(common.IntegrityFilename)
+
+	if EmbeddedIntegrityHashes == nil {
+		panic("Error reading integrity hashes. Ensure they are embedded in the binary.")
+	}
+
+	integrityData, err := io.ReadAll(EmbeddedIntegrityHashes)
+	if err != nil {
+		panic("Error reading data from reader: " + err.Error())
+	}
+
+	// these will be in the form of a json string, so we need to unmarshal them
+	var fileHashes []common.FileHash
+
+	// Unmarshal JSON string to slice of FileHash objects
+	err = json.Unmarshal(integrityData, &fileHashes)
+	if err != nil {
+		fmt.Println("Error unmarshalling JSON:", err)
+		return
+	}
+
+	// get the hashes of the extracted files
+	tampered, err := common.VerifyDirectoryHashes(settings.ScriptExtractDir, fileHashes)
+
+	if err != nil {
+		panic(err)
+	}
+
+	if len(tampered) > 0 {
+
+		fmt.Println("Error validating integrity of extracted files.")
+		fmt.Println("Warning, the following files have been modified since installation:")
+
+		for _, file := range tampered {
+			fmt.Println(file)
+		}
+
+		if pure {
+			fmt.Println("Please re-run the installer.")
+			os.Remove("bootstrapped")
+
+			// quit the program with an error code
+			os.Exit(1000)
+		}
+	} else {
+		fmt.Println("Installation integrity validated successfully.")
 	}
 
 	attachments.Close()
 
 	// run the payload script
 
-	fmt.Println("Running script...")
-
 	pythonExecutable := filepath.Join(settings.PythonExtractDir, "python.exe")
 	mainScriptPath := path.Join(settings.ScriptExtractDir, settings.MainScript)
 
-	if err := common.RunScript(pythonExecutable, mainScriptPath, settings.ScriptExtractDir, os.Args[1:]); err != nil {
-		fmt.Println("Error running Python script:", err)
-		return
-	}
+	if !pure {
+		fmt.Println("Running script...")
 
-	fmt.Println("Script completed.")
+		if err := common.RunScript(pythonExecutable, mainScriptPath, settings.ScriptExtractDir, os.Args[1:]); err != nil {
+			fmt.Println("Error running Python script:", err)
+			return
+		}
+
+		fmt.Println("Script completed.")
+	} else {
+
+		// replace the placeholders in the runscript with the actual values
+		runScript = strings.ReplaceAll(runScript, "{{PYTHON_EXE}}", pythonExecutable)
+		runScript = strings.ReplaceAll(runScript, "{{MAIN_SCRIPT}}", mainScriptPath)
+		runScript = strings.ReplaceAll(runScript, "{{SCRIPTS_DIR}}", settings.ScriptExtractDir)
+
+		err = os.WriteFile("run.bat", []byte(runScript), 0644)
+
+		// get path to run.bat
+		runBatPath, err := filepath.Abs("run.bat")
+		if err != nil {
+			fmt.Println("Error getting absolute path for run.bat:", err)
+			return
+		}
+
+		fmt.Println("Please run the following command in the command line to run the script:")
+		fmt.Println(runBatPath)
+
+	}
 
 }
 
 func ValidateExecutableHash() (exit bool) {
-	executablePath, err := os.Executable()
-	if err != nil {
-		fmt.Println("Error getting executable path:", err)
-		return true
-	}
-	myHash, err := common.Md5SumFile(executablePath)
+	myHash, err := calculateSelfHash()
 
 	if err != nil {
-		fmt.Println("Error getting hash of executable:", err)
+		fmt.Println("Error calculating hash:", err)
 		return true
 	}
 
-	if common.DoesPathExist("hash.txt") {
+	if common.DoesPathExist("bootstrapped") {
 		// read the hash from the file and compare it to the hash of the executable
-		fileHash, err := os.ReadFile("hash.txt")
+		fileHash, err := os.ReadFile("bootstrapped")
 		if err != nil {
 			fmt.Println("Error reading hash file:", err)
 			return true
@@ -174,7 +242,7 @@ func ValidateExecutableHash() (exit bool) {
 
 			PressButtonToContinue("Press enter to accept the new hash and continue...")
 
-			err = common.SaveContentsToFile("hash.txt", myHash)
+			err = common.SaveContentsToFile("bootstrapped", myHash)
 			if err != nil {
 				fmt.Println("Error saving hash to file:", err)
 				return true
@@ -193,14 +261,24 @@ func ValidateExecutableHash() (exit bool) {
 		fmt.Println("Note: If hash values do not match, the file may have been tampered with.")
 
 		PressButtonToContinue("Press enter to continue...")
-
-		err = common.SaveContentsToFile("hash.txt", myHash)
-		if err != nil {
-			fmt.Println("Error saving hash to file:", err)
-			return true
-		}
 	}
 	return false
+}
+
+func calculateSelfHash() (string, error) {
+	executablePath, err := os.Executable()
+	if err != nil {
+		fmt.Println("Error getting executable path:", err)
+		return "", err
+	}
+
+	myHash, err := common.Md5SumFile(executablePath)
+
+	if err != nil {
+		fmt.Println("Error getting hash of executable:", err)
+		return "", err
+	}
+	return myHash, err
 }
 
 func PressButtonToContinue(continueMessage string) {
@@ -252,7 +330,7 @@ func GetSettings(attachments *ember.Attachments) (common.PythonSetupSettings, er
 }
 
 func GetHashmap(attachments *ember.Attachments) (map[string]string, error) {
-	HashReader := attachments.Reader(common.HashesEmbedName)
+	HashReader := attachments.Reader(common.HashesFilename)
 	if HashReader == nil {
 		fmt.Println("Error reading hash. Ensure it is embedded in the binary.")
 
@@ -305,7 +383,7 @@ func ValidateHashes(attachments *ember.Attachments) bool {
 	allHashesMatch := true
 
 	for _, attachment := range attachmentList {
-		if attachment == common.HashesEmbedName {
+		if attachment == common.HashesFilename {
 			continue
 		}
 
@@ -321,8 +399,6 @@ func ValidateHashes(attachments *ember.Attachments) bool {
 		if !hashesMatch {
 			fmt.Println("Error validating hash for:", attachment, " -> Expected:", hashMap[attachment], "Actual:", actualHash)
 			allHashesMatch = false
-		} else {
-			fmt.Println("Hash validated for:", attachment, " -> Expected:", hashMap[attachment], "Actual:", actualHash)
 		}
 	}
 

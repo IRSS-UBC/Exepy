@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"lukasolson.net/common"
 	"os"
 	"path"
+	"windowsPE"
 )
 
 const settingsFileName = "settings.json"
@@ -57,6 +57,17 @@ func createInstaller() {
 		panic(err)
 	}
 
+	PayloadHashes, err := common.ComputeDirectoryHashes(settings.ScriptDir)
+	if err != nil {
+		panic(err)
+	}
+
+	// convert the hashes to a json string
+	PayloadHashesJson, err := json.Marshal(PayloadHashes)
+	if err != nil {
+		panic(err)
+	}
+
 	PayloadFile, err := common.CompressDirToStream(settings.ScriptDir)
 	if err != nil {
 		panic(err)
@@ -65,7 +76,7 @@ func createInstaller() {
 	SettingsFile, err := os.Open(settingsFileName)
 	defer SettingsFile.Close()
 
-	embedMap := createEmbedMap(pythonFile, PayloadFile, wheelsFile, SettingsFile)
+	embedMap := createEmbedMap(pythonFile, PayloadFile, wheelsFile, SettingsFile, bytes.NewReader(PayloadHashesJson))
 
 	if err := writePythonExecutable(file, embedMap); err != nil {
 		return
@@ -91,15 +102,16 @@ func createInstaller() {
 
 }
 
-func createEmbedMap(PythonRS, PayloadRS, wheelsFile, SettingsFile io.ReadSeeker) map[string]io.ReadSeeker {
+func createEmbedMap(PythonRS, PayloadRS, wheelsFile, SettingsFile, PayloadIntegrity io.ReadSeeker) map[string]io.ReadSeeker {
 
-	hashMap, hashBytes := HashFiles(PythonRS, PayloadRS, wheelsFile, SettingsFile)
+	hashMap, hashBytes := HashFiles(PythonRS, PayloadRS, wheelsFile, SettingsFile, PayloadIntegrity)
 
 	json.NewEncoder(hashBytes).Encode(hashMap)
 
 	embedMap := make(map[string]io.ReadSeeker)
 
-	embedMap[common.HashesEmbedName] = bytes.NewReader(hashBytes.Bytes())
+	embedMap[common.HashesFilename] = bytes.NewReader(hashBytes.Bytes())
+	embedMap[common.IntegrityFilename] = PayloadIntegrity
 	embedMap[common.PythonFilename] = PythonRS
 	embedMap[common.PayloadFilename] = PayloadRS
 	embedMap[common.WheelsFilename] = wheelsFile
@@ -108,13 +120,18 @@ func createEmbedMap(PythonRS, PayloadRS, wheelsFile, SettingsFile io.ReadSeeker)
 	return embedMap
 }
 
-func HashFiles(PythonRS io.ReadSeeker, PayloadRS io.ReadSeeker, wheelsFile io.ReadSeeker, SettingsFile io.ReadSeeker) (map[string]string, *bytes.Buffer) {
+func HashFiles(PythonRS, PayloadRS, wheelsFile, SettingsFile, PayloadHashes io.ReadSeeker) (map[string]string, *bytes.Buffer) {
 	PythonHash, err := common.HashReadSeeker(PythonRS)
 	if err != nil {
 		panic(err)
 	}
 
 	PayloadHash, err := common.HashReadSeeker(PayloadRS)
+	if err != nil {
+		panic(err)
+	}
+
+	PayloadIntegrityHash, err := common.HashReadSeeker(PayloadHashes)
 	if err != nil {
 		panic(err)
 	}
@@ -132,6 +149,7 @@ func HashFiles(PythonRS io.ReadSeeker, PayloadRS io.ReadSeeker, wheelsFile io.Re
 	hashMap, hashBytes := make(map[string]string), new(bytes.Buffer)
 	hashMap[common.PythonFilename] = PythonHash
 	hashMap[common.PayloadFilename] = PayloadHash
+	hashMap[common.IntegrityFilename] = PayloadIntegrityHash
 	hashMap[common.WheelsFilename] = wheelsFileHash
 	hashMap[common.GetConfigEmbedName()] = SettingsFileHash
 
@@ -156,7 +174,7 @@ func writePythonExecutable(writer io.Writer, attachments map[string]io.ReadSeeke
 	}
 
 	// Clean the executable file from any previous attachments
-	exeWithoutSignature, err := removeSignature(executableBytes)
+	exeWithoutSignature, err := windowsPE.RemoveSignature(executableBytes)
 
 	if err != nil {
 		return err
@@ -212,81 +230,6 @@ func loadSelf() ([]byte, error) {
 
 	// Return the file content as a byte slice and any error that might have occurred
 	return memSlice.Bytes(), err
-}
-
-// removeSignature zeros out the security directory and checksum in a PE file.
-func removeSignature(peBytes []byte) ([]byte, error) {
-	// A valid DOS header is at least 64 bytes.
-	if len(peBytes) < 64 {
-		return nil, errors.New("file is too small to be a PE file")
-	}
-
-	// 1. Parse the DOS Header to get the offset to the PE header.
-	peOffset := int(binary.LittleEndian.Uint32(peBytes[0x3C : 0x3C+4]))
-
-	// Ensure the PE header is within bounds.
-	if len(peBytes) < peOffset+4 {
-		return nil, errors.New("file is too small to be a PE file")
-	}
-
-	// 2. Verify the PE signature ("PE\0\0").
-	if string(peBytes[peOffset:peOffset+4]) != "PE\x00\x00" {
-		return nil, errors.New("invalid PE signature")
-	}
-
-	// Calculate offsets:
-	fileHeaderOffset := peOffset + 4
-	optionalHeaderOffset := fileHeaderOffset + 20
-
-	// Make sure we have at least the magic number from the optional header.
-	if len(peBytes) < optionalHeaderOffset+2 {
-		return nil, errors.New("file does not have an optional header")
-	}
-
-	// Read the magic number to determine PE format.
-	magic := binary.LittleEndian.Uint16(peBytes[optionalHeaderOffset : optionalHeaderOffset+2])
-	var dataDirectoryOffset int
-	var optionalHeaderCheckSumOffset int
-
-	switch magic {
-	case 0x10b: // PE32
-		// For PE32, the data directories start at offset 96.
-		if len(peBytes) < optionalHeaderOffset+96 {
-			return nil, errors.New("optional header too small for PE32")
-		}
-		dataDirectoryOffset = optionalHeaderOffset + 96
-		optionalHeaderCheckSumOffset = optionalHeaderOffset + 64
-	case 0x20b: // PE32+
-		// For PE32+, the data directories start at offset 112.
-		if len(peBytes) < optionalHeaderOffset+112 {
-			return nil, errors.New("optional header too small for PE32+")
-		}
-		dataDirectoryOffset = optionalHeaderOffset + 112
-		optionalHeaderCheckSumOffset = optionalHeaderOffset + 64
-	default:
-		return nil, errors.New("unknown optional header magic")
-	}
-
-	const ImageDirectoryEntrySecurity = 4
-	// Each data directory entry is 8 bytes (4 bytes VirtualAddress, 4 bytes Size).
-	securityDirectoryOffset := dataDirectoryOffset + (ImageDirectoryEntrySecurity * 8)
-
-	// Check bounds before modifying the file.
-	if securityDirectoryOffset+8 > len(peBytes) {
-		return nil, errors.New("security directory offset out of bounds")
-	}
-	if optionalHeaderCheckSumOffset+4 > len(peBytes) {
-		return nil, errors.New("optional header checksum offset out of bounds")
-	}
-
-	// 3. Zero out the Security Directory (Digital Signature).
-	binary.LittleEndian.PutUint32(peBytes[securityDirectoryOffset:securityDirectoryOffset+4], 0)   // VirtualAddress
-	binary.LittleEndian.PutUint32(peBytes[securityDirectoryOffset+4:securityDirectoryOffset+8], 0) // Size
-
-	// 4. Zero out the Checksum Value.
-	binary.LittleEndian.PutUint32(peBytes[optionalHeaderCheckSumOffset:optionalHeaderCheckSumOffset+4], 0)
-
-	return peBytes, nil
 }
 
 func removeEmbedding(file []byte) ([]byte, error) {

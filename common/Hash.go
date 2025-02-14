@@ -7,8 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 )
+
+type FileHash struct {
+	RelativePath string `json:"relative_path"`
+	Hash         string `json:"hash"`
+}
 
 // https://stackoverflow.com/a/40436529 CC BY-SA 4.0
 func Md5SumFile(filePath string) (string, error) {
@@ -25,46 +29,71 @@ func Md5SumFile(filePath string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func Md5sumDirectory(dirPath string) (string, error) {
-	var hashes []string
+func ComputeDirectoryHashes(dirPath string) ([]FileHash, error) {
+	var fileHashes []FileHash
 
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-
-		if !info.IsDir() {
-			file, err := os.Open(path)
-			if err != nil {
-				return err
-			}
-			defer file.Close()
-
-			hash := md5.New()
-			if _, err := io.Copy(hash, file); err != nil {
-				return err
-			}
-
-			hashes = append(hashes, hex.EncodeToString(hash.Sum(nil)))
+		// Skip directories.
+		if info.IsDir() {
+			return nil
 		}
 
+		// Compute the file's relative path with respect to dirPath.
+		rel, err := filepath.Rel(dirPath, path)
+		if err != nil {
+			return err
+		}
+
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+
+		hash := md5.New()
+		if _, err := io.Copy(hash, file); err != nil {
+			file.Close()
+			return err
+		}
+		file.Close()
+
+		fileHashes = append(fileHashes, FileHash{
+			RelativePath: rel,
+			Hash:         hex.EncodeToString(hash.Sum(nil)),
+		})
 		return nil
 	})
-
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// Sort the hashes to ensure consistent results
-	sort.Strings(hashes)
+	// Sort the fileHashes by relative path to ensure a consistent order.
+	sort.Slice(fileHashes, func(i, j int) bool {
+		return fileHashes[i].RelativePath < fileHashes[j].RelativePath
+	})
 
-	// Combine the hashes into a single string
-	combined := strings.Join(hashes, "")
+	return fileHashes, nil
+}
 
-	// Hash the combined string
-	finalHash := md5.Sum([]byte(combined))
+func VerifyDirectoryHashes(dirPath string, fileHashes []FileHash) ([]string, error) {
+	var mismatched []string
 
-	return hex.EncodeToString(finalHash[:]), nil
+	for _, fh := range fileHashes {
+		fullPath := filepath.Join(dirPath, fh.RelativePath)
+		currentHash, err := Md5SumFile(fullPath)
+		if err != nil {
+			return nil, err
+		}
+
+		// Check if the current file's hash matches the expected hash
+		if currentHash != fh.Hash {
+			mismatched = append(mismatched, fh.RelativePath)
+		}
+	}
+
+	return mismatched, nil
 }
 
 func HashReadSeeker(rs io.ReadSeeker) (string, error) {

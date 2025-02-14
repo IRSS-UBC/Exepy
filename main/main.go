@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"github.com/maja42/ember"
+	"lukasolson.net/common"
 )
 
 func main() {
@@ -16,7 +17,7 @@ func main() {
 
 	if embedded {
 		fmt.Println("Project embedded. Running in installer mode.")
-		bootstrap()
+		bootstrap(common.PureMode)
 	} else {
 		fmt.Println("Project not embedded. Running in creator mode.")
 		createInstaller()
