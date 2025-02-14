@@ -10,7 +10,7 @@ A straightforward public domain tool for packaging your Python projects into sta
 
 **Getting Started**
 
-1. **Download Exepy:** Obtain the latest release from [link to releases page].
+1. **Download Exepy:** Obtain the [latest release](https://github.com/IRSS-UBC/Exepy/releases).
 2. **Structure Your Project:**
     * **Script Folder:** Place all your Python code into a designated folder named "payload".
     * **Requirements:** List your project's dependencies in a `requirements.txt` file. If you haven't already, use `pip freeze > requirements.txt` to generate this file.
