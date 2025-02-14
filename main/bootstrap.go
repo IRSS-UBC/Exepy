@@ -194,7 +194,7 @@ func ValidateExecutableHash() (exit bool) {
 
 		PressButtonToContinue("Press enter to continue...")
 
-		err = common.SaveContentsToFile("hash", myHash)
+		err = common.SaveContentsToFile("hash.txt", myHash)
 		if err != nil {
 			fmt.Println("Error saving hash to file:", err)
 			return true
