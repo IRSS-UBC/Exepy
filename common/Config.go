@@ -11,6 +11,7 @@ type PythonSetupSettings struct {
 	PipDownloadURL    string `json:"pipDownloadURL"`
 	PythonDownloadZip string `json:"pythonDownloadFile"`
 	PythonExtractDir  string `json:"pythonExtractDir"`
+	ScriptExtractDir  string `json:"scriptExtractDir"`
 	PthFile           string `json:"pthFile"`
 	PythonInteriorZip string `json:"pythonInteriorZip"`
 	RequirementsFile  string `json:"requirementsFile"`
@@ -56,6 +57,7 @@ func LoadOrSaveDefault(filename string) (*PythonSetupSettings, error) {
 			PipDownloadURL:    "",
 			PythonDownloadZip: "",
 			PythonExtractDir:  "",
+			ScriptExtractDir:  "scripts",
 			PthFile:           "",
 			PythonInteriorZip: "",
 			ScriptDir:         "scripts",

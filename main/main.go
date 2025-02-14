@@ -15,10 +15,10 @@ func main() {
 	}
 
 	if embedded {
-		fmt.Println("Embedded. Running in installer mode.")
+		fmt.Println("Project embedded. Running in installer mode.")
 		bootstrap()
 	} else {
-		fmt.Println("Not embedded. Running in creator mode.")
+		fmt.Println("Project not embedded. Running in creator mode.")
 		createInstaller()
 	}
 }

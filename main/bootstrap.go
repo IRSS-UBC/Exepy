@@ -66,22 +66,19 @@ func bootstrap() {
 			return
 		}
 
-		// EXTRACT THE WHEELS ZIP FILE
 		wheelsReader := attachments.Reader(common.WheelsFilename)
 		if wheelsReader == nil {
 			fmt.Println("Error reading wheels. Ensure it is embedded in the binary.")
 			return
 		}
 
-		// EXTRACT THE PYTHON ZIP FILE
 		err = common.DecompressIOStream(PythonReader, settings.PythonExtractDir)
 		if err != nil {
 			fmt.Println("Error extracting Python zip file:", err)
 			return
 		}
 
-		// EXTRACT THE PIPELINE ZIP FILE
-		err = common.DecompressIOStream(PayloadReader, "")
+		err = common.DecompressIOStream(PayloadReader, settings.ScriptExtractDir)
 		if err != nil {
 			fmt.Println("Error extracting payload zip file:", err)
 			return
@@ -89,7 +86,6 @@ func bootstrap() {
 
 		wheelsDir := path.Join(settings.PythonExtractDir, common.WheelsFilename)
 
-		// EXTRACT THE WHEELS ZIP FILE
 		err = common.DecompressIOStream(wheelsReader, wheelsDir)
 		if err != nil {
 			fmt.Println("Error extracting wheels zip file:", err)
@@ -112,8 +108,11 @@ func bootstrap() {
 
 		// run the setup.py file if configured
 
+		// setup script path is relative to the extracted script directory
+		setupScriptPath := path.Join(settings.ScriptExtractDir, settings.SetupScript)
+
 		if settings.SetupScript != "" {
-			if err := common.RunCommand(pythonPath, []string{settings.SetupScript}); err != nil {
+			if err := common.RunCommand(pythonPath, []string{setupScriptPath}); err != nil {
 				fmt.Println("Error running "+settings.SetupScript+":", err)
 				return
 			}
@@ -132,15 +131,15 @@ func bootstrap() {
 
 	fmt.Println("Running script...")
 
-	appendedArguments := append([]string{settings.MainScript}, os.Args[1:]...)
+	pythonExecutable := filepath.Join(settings.PythonExtractDir, "python.exe")
+	mainScriptPath := path.Join(settings.ScriptExtractDir, settings.MainScript)
 
-	if err := common.RunCommand(filepath.Join(settings.PythonExtractDir, "python.exe"), appendedArguments); err != nil {
+	if err := common.RunScript(pythonExecutable, mainScriptPath, settings.ScriptExtractDir, os.Args[1:]); err != nil {
 		fmt.Println("Error running Python script:", err)
 		return
 	}
 
 	fmt.Println("Script completed.")
-	PressButtonToContinue("Press enter to exit")
 
 }
 
@@ -171,11 +170,11 @@ func ValidateExecutableHash() (exit bool) {
 			fmt.Println("Expected:", string(fileHash))
 			fmt.Println("Actual:", myHash)
 
-			fmt.Println("Please validate my Md5 hash with the one supplied by my distributor before continuing")
+			fmt.Println("Please validate the Md5 hash with the one supplied by the distributor before continuing")
 
 			PressButtonToContinue("Press enter to accept the new hash and continue...")
 
-			err = common.SaveContentsToFile("hash", myHash)
+			err = common.SaveContentsToFile("hash.txt", myHash)
 			if err != nil {
 				fmt.Println("Error saving hash to file:", err)
 				return true
@@ -187,13 +186,11 @@ func ValidateExecutableHash() (exit bool) {
 
 	} else {
 
-		fmt.Println("Please validate my Md5 hash with the one supplied by my distributor before continuing")
+		fmt.Println("Please validate my Md5 hash before continuing")
 		fmt.Println("While the hash is not a guarantee of safety, it is a good indicator of file integrity.")
 		fmt.Println("You can validate my hash by running the following command in the command line:")
 		fmt.Println("certutil -hashfile", os.Args[0], "MD5")
-		fmt.Println("It should also match my self-reported hash:", myHash)
-		fmt.Println("")
-		fmt.Println("Note: If three hash values do not match, the file may have been tampered with.")
+		fmt.Println("Note: If hash values do not match, the file may have been tampered with.")
 
 		PressButtonToContinue("Press enter to continue...")
 

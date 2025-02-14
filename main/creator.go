@@ -154,14 +154,14 @@ func writePythonExecutable(writer io.Writer, attachments map[string]io.ReadSeeke
 	}
 
 	// Clean the executable file from any previous attachments
-	cleaned, err := cleanByteSlice(executableBytes)
+	//cleaned, err := cleanByteSlice(executableBytes)
 
 	if err != nil {
 		return err
 	}
 
 	// Create a new reader for the executable bytes
-	reader := bytes.NewReader(cleaned)
+	reader := bytes.NewReader(executableBytes)
 
 	// Embed the attachments into the executable
 	err = embedding.Embed(writer, reader, attachments, nil)
