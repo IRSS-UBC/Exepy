@@ -163,7 +163,7 @@ func bootstrap(pure bool) {
 		fmt.Println("Warning, the following files have been modified since installation:")
 
 		for _, file := range tampered {
-			fmt.Println(file)
+			fmt.Println(" - " + file)
 		}
 
 		if pure {
