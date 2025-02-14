@@ -153,8 +153,15 @@ func writePythonExecutable(writer io.Writer, attachments map[string]io.ReadSeeke
 		return err
 	}
 
+	// Clean the executable file from any previous attachments
+	cleaned, err := cleanByteSlice(executableBytes)
+
+	if err != nil {
+		return err
+	}
+
 	// Create a new reader for the executable bytes
-	reader := bytes.NewReader(executableBytes)
+	reader := bytes.NewReader(cleaned)
 
 	// Embed the attachments into the executable
 	err = embedding.Embed(writer, reader, attachments, nil)
@@ -196,5 +203,15 @@ func loadSelf() ([]byte, error) {
 	}
 
 	// Return the file content as a byte slice and any error that might have occurred
+	return memSlice.Bytes(), err
+}
+
+func cleanByteSlice(file []byte) ([]byte, error) {
+
+	memSlice := new(bytes.Buffer)
+
+	reader := bytes.NewReader(file)
+
+	err := embedding.RemoveEmbedding(memSlice, reader, nil)
 	return memSlice.Bytes(), err
 }
