@@ -72,7 +72,7 @@ func (e *Encoder) Encode() (io.Reader, error) {
 			// Process directories.
 			if d.IsDir() {
 				fh.FileSize = 0
-				fh.FileType = FileTypeDirectory
+				fh.FileType = fileTypeDirectory
 				fh.LinkTarget = ""
 			} else if d.Type()&os.ModeSymlink != 0 { // Process symlinks.
 				// Use Lstat to avoid following the symlink.
@@ -85,11 +85,11 @@ func (e *Encoder) Encode() (io.Reader, error) {
 					return err
 				}
 				fh.FileSize = 0
-				fh.FileType = FileTypeSymlink
+				fh.FileType = fileTypeSymlink
 				fh.LinkTarget = linkTarget
 			} else if info.Mode().IsRegular() { // Process regular files.
 				fh.FileSize = uint64(info.Size())
-				fh.FileType = FileTypeRegular
+				fh.FileType = fileTypeRegular
 				fh.LinkTarget = ""
 			} else {
 				// Skip non-regular files.
@@ -116,7 +116,7 @@ func (e *Encoder) Encode() (io.Reader, error) {
 			})
 
 			// For regular files, write file data in chunks.
-			if fh.FileType == FileTypeRegular {
+			if fh.FileType == fileTypeRegular {
 				file, err := os.Open(path)
 				if err != nil {
 					return err
@@ -146,9 +146,9 @@ func (e *Encoder) Encode() (io.Reader, error) {
 					}
 				}
 				fmt.Printf("Encoded file: %s\n", relPath)
-			} else if fh.FileType == FileTypeDirectory {
+			} else if fh.FileType == fileTypeDirectory {
 				fmt.Printf("Encoded directory: %s\n", relPath)
-			} else if fh.FileType == FileTypeSymlink {
+			} else if fh.FileType == fileTypeSymlink {
 				fmt.Printf("Encoded symlink: %s -> %s\n", relPath, fh.LinkTarget)
 			}
 
@@ -158,9 +158,9 @@ func (e *Encoder) Encode() (io.Reader, error) {
 		bufferedWriter.Flush()
 
 		// Write the manifest.
-		//if err := WriteManifest(bufferedWriter, manifestEntries); err != nil {
-		//	w.CloseWithError(err)
-		//}
+		if err := writeManifest(bufferedWriter, manifestEntries); err != nil {
+			w.CloseWithError(err)
+		}
 
 		if err != nil {
 			w.CloseWithError(err)

@@ -63,23 +63,26 @@ func (d *Decoder) Decode(r io.Reader) error {
 	for {
 		// Check if the next file header is available or if it's a manifest.
 
-		// Peek the next 4 bytes to check for the magic number.
-		magicBuf := make([]byte, 4)
-		if _, err := bufferedReader.Peek(4); err == io.EOF {
+		magicBuf, err := bufferedReader.Peek(4)
+		if err == io.EOF {
 			// No more data in the stream; stop decoding.
 			return nil
 		}
+		if err != nil {
+			return fmt.Errorf("Decode: error peeking magic number: %v", err)
+		}
 
+		fmt.Printf("Magic number: % x\n", magicBuf)
 		magic := binary.BigEndian.Uint32(magicBuf)
 
 		if magic == manifestMagicNumber {
 
-			// Read and process the manifest.
-			//if err := ReadManifest(bufferedReader); err != nil {
-			//	return fmt.Errorf("Decode: error reading manifest: %v", err)
-			//}
-
 			println("End of stream detected. Exiting...")
+
+			// Read and process the manifest.
+			if err := readManifest(bufferedReader); err != nil {
+				return fmt.Errorf("Decode: error reading manifest: %v", err)
+			}
 
 			break // Stop decoding after the manifest.
 		}
@@ -101,20 +104,20 @@ func (d *Decoder) Decode(r io.Reader) error {
 		}
 
 		switch fh.FileType {
-		case FileTypeDirectory:
+		case fileTypeDirectory:
 			if err := os.MkdirAll(fullPath, os.FileMode(fh.FileMode)); err != nil {
 				return fmt.Errorf("Decode: error creating directory %s: %v", fullPath, err)
 			}
 			fmt.Printf("Decoded directory: %s\n", fullPath)
 			continue
-		case FileTypeSymlink:
+		case fileTypeSymlink:
 			os.Remove(fullPath)
 			if err := os.Symlink(fh.LinkTarget, fullPath); err != nil {
 				return fmt.Errorf("Decode: error creating symlink %s -> %s: %v", fullPath, fh.LinkTarget, err)
 			}
 			fmt.Printf("Decoded symlink: %s -> %s\n", fullPath, fh.LinkTarget)
 			continue
-		case FileTypeRegular:
+		case fileTypeRegular:
 			// Proceed to decode file contents.
 		default:
 			return fmt.Errorf("Decode: unknown file type for %s", fh.FilePath)
@@ -128,7 +131,6 @@ func (d *Decoder) Decode(r io.Reader) error {
 		var totalRead uint64 = 0
 		fmt.Printf("Decoding file: %s (expected size: %d bytes)\n", fullPath, fh.FileSize)
 		for totalRead < fh.FileSize {
-			// Debug: indicate we are about to read a chunk header.
 			fmt.Printf("File %s: Reading chunk header at offset %d (expecting %d bytes)\n", fh.FilePath, totalRead, chunkHeaderSize)
 			chunkHeader := make([]byte, chunkHeaderSize)
 			n, err := io.ReadFull(bufferedReader, chunkHeader)

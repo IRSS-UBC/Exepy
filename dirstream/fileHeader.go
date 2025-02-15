@@ -5,32 +5,28 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"unsafe"
 )
 
 const (
-	// Updated header size to 512 bytes.
 	headerSize = 512
 
 	// Default chunk size if not specified.
 	DefaultChunkSize = 4096
 
-	HeaderMagicNumber = 0x49525353 // 4-byte magic string
+	fileHeaderMagicNumber = 0x49525353 // 4-byte magic number
 
-	// Each chunk is preceded by a header:
-	// 4 bytes for the magic number and 8 bytes for the chunk length.
 	chunkHeaderSize = 4 + 8
 
-	// Magic number for chunk header identification.
 	chunkMagicNumber = 0xDEADBEEF
 
-	// Header version for our file header format.
 	headerVersion = 1
 )
 
 const (
-	FileTypeRegular   = 0
-	FileTypeDirectory = 1
-	FileTypeSymlink   = 2
+	fileTypeRegular   = 0
+	fileTypeDirectory = 1
+	fileTypeSymlink   = 2
 )
 
 // FileHeader represents the header of a file in the stream.
@@ -48,7 +44,7 @@ func writeHeader(w io.Writer, fh fileHeader) error {
 	headerBytes := make([]byte, headerSize)
 
 	// Bytes 0-3: Magic string.
-	binary.BigEndian.PutUint32(headerBytes[0:4], HeaderMagicNumber)
+	binary.BigEndian.PutUint32(headerBytes[0:4], fileHeaderMagicNumber)
 
 	// Bytes 4-7: Header version.
 	binary.BigEndian.PutUint32(headerBytes[4:8], fh.Version)
@@ -65,11 +61,11 @@ func writeHeader(w io.Writer, fh fileHeader) error {
 	// For example:
 	binary.BigEndian.PutUint64(headerBytes[260:268], fh.FileSize)
 	binary.BigEndian.PutUint32(headerBytes[268:272], fh.FileMode)
-	binary.BigEndian.PutUint64(headerBytes[272:280], uint64(fh.ModTime))
+	binary.BigEndian.PutUint64(headerBytes[272:280], *(*uint64)(unsafe.Pointer(&fh.ModTime)))
 	headerBytes[280] = fh.FileType
 
 	// Symlink target and reserved bytes as before.
-	if fh.FileType == FileTypeSymlink {
+	if fh.FileType == fileTypeSymlink {
 		targetBytes := []byte(fh.LinkTarget)
 		if len(targetBytes) >= 128 {
 			return fmt.Errorf("symlink target too long: %s", fh.LinkTarget)
@@ -88,9 +84,9 @@ func readHeader(r io.Reader) (fileHeader, error) {
 		return fileHeader{}, err
 	}
 
-	// Validate magic string.
-	if binary.BigEndian.Uint32(headerBytes[0:4]) != HeaderMagicNumber {
-		return fileHeader{}, fmt.Errorf("invalid header magic: expected %d, got %d", HeaderMagicNumber, binary.BigEndian.Uint32(headerBytes[0:4]))
+	// Validate magic number.
+	if binary.BigEndian.Uint32(headerBytes[0:4]) != fileHeaderMagicNumber {
+		return fileHeader{}, fmt.Errorf("invalid header magic number: expected %d, got %d", fileHeaderMagicNumber, binary.BigEndian.Uint32(headerBytes[0:4]))
 	}
 
 	fh := fileHeader{}
@@ -107,10 +103,11 @@ func readHeader(r io.Reader) (fileHeader, error) {
 	// Read remaining fields as before.
 	fh.FileSize = binary.BigEndian.Uint64(headerBytes[260:268])
 	fh.FileMode = binary.BigEndian.Uint32(headerBytes[268:272])
-	fh.ModTime = int64(binary.BigEndian.Uint64(headerBytes[272:280]))
+	uModTime := binary.BigEndian.Uint64(headerBytes[272:280])
+	fh.ModTime = *(*int64)(unsafe.Pointer(&uModTime))
 	fh.FileType = headerBytes[280]
 
-	if fh.FileType == FileTypeSymlink {
+	if fh.FileType == fileTypeSymlink {
 		targetData := headerBytes[281:409]
 		zeroIndex = bytes.IndexByte(targetData, 0)
 		if zeroIndex == -1 {
