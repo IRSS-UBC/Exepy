@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
 func RunCommand(command string, args []string) error {
@@ -15,41 +14,6 @@ func RunCommand(command string, args []string) error {
 	}
 
 	println("Running command:", cmd.String())
-	return cmd.Run()
-}
-
-func RunScript(pythonExecutablePath string, mainScriptPath string, scriptsDir string, args []string) error {
-
-	cmd, err := createCommand(pythonExecutablePath, args)
-	if err != nil {
-		return err
-	}
-
-	// Get the absolute path of the scripts directory
-	absScriptsDir, err := filepath.Abs(scriptsDir)
-	if err != nil {
-		return fmt.Errorf("error determining absolute path for scripts directory: %v", err)
-	}
-
-	// Get the absolute path of the main script
-	absMainScript, err := filepath.Abs(mainScriptPath)
-	if err != nil {
-		return fmt.Errorf("error determining absolute path for main script: %v", err)
-	}
-
-	// Construct the Python code for the -c flag
-	pythonCode := fmt.Sprintf(
-		"import sys; sys.path.insert(0, '%s'); exec(open('%s').read())",
-		strings.ReplaceAll(absScriptsDir, "\\", "/"),
-		strings.ReplaceAll(absMainScript, "\\", "/"),
-	)
-
-	cmd.Args = append(cmd.Args, "-c", pythonCode)
-
-	// Properly set the environment variable.
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PYTHONPATH=%s", absScriptsDir))
-
-	println("Running script:", cmd.String())
 	return cmd.Run()
 }
 

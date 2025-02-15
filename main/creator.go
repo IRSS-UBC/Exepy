@@ -57,7 +57,9 @@ func createInstaller() {
 		panic(err)
 	}
 
-	PayloadHashes, err := common.ComputeDirectoryHashes(settings.ScriptDir)
+	ignoredDirs := []string{"__pycache__", ".git", ".idea", ".vscode"}
+
+	PayloadHashes, err := common.ComputeDirectoryHashes(settings.ScriptDir, ignoredDirs)
 	if err != nil {
 		panic(err)
 	}
@@ -68,7 +70,7 @@ func createInstaller() {
 		panic(err)
 	}
 
-	PayloadFile, err := common.CompressDirToStream(settings.ScriptDir)
+	PayloadFile, err := common.CompressDirToStream(settings.ScriptDir, ignoredDirs)
 	if err != nil {
 		panic(err)
 	}

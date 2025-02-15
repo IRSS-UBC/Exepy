@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -12,7 +11,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 //go:embed run.bat
@@ -184,34 +182,33 @@ func bootstrap(pure bool) {
 	pythonExecutable := filepath.Join(settings.PythonExtractDir, "python.exe")
 	mainScriptPath := path.Join(settings.ScriptExtractDir, settings.MainScript)
 
-	if !pure {
+	// replace the placeholders in the runscript with the actual values
+	runScript = strings.ReplaceAll(runScript, "{{PYTHON_EXE}}", pythonExecutable)
+	runScript = strings.ReplaceAll(runScript, "{{MAIN_SCRIPT}}", mainScriptPath)
+	runScript = strings.ReplaceAll(runScript, "{{SCRIPTS_DIR}}", settings.ScriptExtractDir)
+
+	err = os.WriteFile("run.bat", []byte(runScript), 0644)
+
+	// get path to run.bat
+	runBatPath, err := filepath.Abs("run.bat")
+	if err != nil {
+		fmt.Println("Error getting absolute path for run.bat:", err)
+		return
+	}
+
+	if pure {
+		fmt.Println("Please run the following command in the command line to run the script:")
+		fmt.Println(runBatPath)
+	} else {
+
 		fmt.Println("Running script...")
 
-		if err := common.RunScript(pythonExecutable, mainScriptPath, settings.ScriptExtractDir, os.Args[1:]); err != nil {
-			fmt.Println("Error running Python script:", err)
+		if err := common.RunCommand(runBatPath, os.Args[1:]); err != nil {
+			fmt.Println("Error running script:", err)
 			return
 		}
 
 		fmt.Println("Script completed.")
-	} else {
-
-		// replace the placeholders in the runscript with the actual values
-		runScript = strings.ReplaceAll(runScript, "{{PYTHON_EXE}}", pythonExecutable)
-		runScript = strings.ReplaceAll(runScript, "{{MAIN_SCRIPT}}", mainScriptPath)
-		runScript = strings.ReplaceAll(runScript, "{{SCRIPTS_DIR}}", settings.ScriptExtractDir)
-
-		err = os.WriteFile("run.bat", []byte(runScript), 0644)
-
-		// get path to run.bat
-		runBatPath, err := filepath.Abs("run.bat")
-		if err != nil {
-			fmt.Println("Error getting absolute path for run.bat:", err)
-			return
-		}
-
-		fmt.Println("Please run the following command in the command line to run the script:")
-		fmt.Println(runBatPath)
-
 	}
 
 }
@@ -240,7 +237,7 @@ func ValidateExecutableHash() (exit bool) {
 
 			fmt.Println("Please validate the Md5 hash with the one supplied by the distributor before continuing")
 
-			PressButtonToContinue("Press enter to accept the new hash and continue...")
+			common.PressButtonToContinue("Press enter to accept the new hash and continue...")
 
 			err = common.SaveContentsToFile("bootstrapped", myHash)
 			if err != nil {
@@ -257,10 +254,20 @@ func ValidateExecutableHash() (exit bool) {
 		fmt.Println("Please validate my Md5 hash before continuing")
 		fmt.Println("While the hash is not a guarantee of safety, it is a good indicator of file integrity.")
 		fmt.Println("You can validate my hash by running the following command in the command line:")
-		fmt.Println("certutil -hashfile", os.Args[0], "MD5")
+
+		var exeName string
+
+		// check if os.Args[0] has .exe extension
+		if !strings.HasSuffix(os.Args[0], ".exe") {
+			exeName = os.Args[0] + ".exe"
+		} else {
+			exeName = os.Args[0]
+		}
+
+		fmt.Println("certutil -hashfile", exeName, "MD5")
 		fmt.Println("Note: If hash values do not match, the file may have been tampered with.")
 
-		PressButtonToContinue("Press enter to continue...")
+		common.PressButtonToContinue("Press enter to continue...")
 	}
 	return false
 }
@@ -279,40 +286,6 @@ func calculateSelfHash() (string, error) {
 		return "", err
 	}
 	return myHash, err
-}
-
-func PressButtonToContinue(continueMessage string) {
-	fmt.Println(continueMessage)
-	fmt.Println(".")
-	fmt.Print("\a")
-
-	stop := make(chan bool)
-
-	go func() {
-		animation := []string{" ", " ", " ", "o", "O", "o", " ", " ", " "}
-		i := 0
-		for {
-			select {
-			case <-stop:
-				fmt.Printf("\r%s", strings.Repeat(" ", len(strings.Join(animation, ""))))
-				return
-			default:
-				fmt.Printf("\r%s", strings.Join(animation, ""))
-				time.Sleep(100 * time.Millisecond)
-				animation = append(animation[1:], animation[0])
-				i++
-				if i == len(animation) {
-					i = 0
-					animation = []string{" ", " ", " ", "o", "O", "o", " ", " ", " "}
-				}
-			}
-		}
-	}()
-
-	reader := bufio.NewReader(os.Stdin)
-	_, _ = reader.ReadString('\n')
-
-	stop <- true
 }
 
 func GetSettings(attachments *ember.Attachments) (common.PythonSetupSettings, error) {

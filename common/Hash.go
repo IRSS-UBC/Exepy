@@ -29,38 +29,48 @@ func Md5SumFile(filePath string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func ComputeDirectoryHashes(dirPath string) ([]FileHash, error) {
+func ComputeDirectoryHashes(dirPath string, ignoredDirs []string) ([]FileHash, error) {
 	var fileHashes []FileHash
 
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		// Skip directories.
+
+		// If it's a directory, check if it should be ignored.
 		if info.IsDir() {
+			for _, ignored := range ignoredDirs {
+				if info.Name() == ignored {
+					// Skip the entire directory and its contents.
+					return filepath.SkipDir
+				}
+			}
+			// Continue walking if the directory is not ignored.
 			return nil
 		}
 
-		// Compute the file's relative path with respect to dirPath.
-		rel, err := filepath.Rel(dirPath, path)
+		// For files, compute the relative path.
+		relativePath, err := filepath.Rel(dirPath, path)
 		if err != nil {
 			return err
 		}
 
+		// Open the file.
 		file, err := os.Open(path)
 		if err != nil {
 			return err
 		}
+		defer file.Close()
 
+		// Compute the MD5 hash.
 		hash := md5.New()
 		if _, err := io.Copy(hash, file); err != nil {
-			file.Close()
 			return err
 		}
-		file.Close()
 
+		// Append the hash result.
 		fileHashes = append(fileHashes, FileHash{
-			RelativePath: rel,
+			RelativePath: filepath.ToSlash(relativePath),
 			Hash:         hex.EncodeToString(hash.Sum(nil)),
 		})
 		return nil
@@ -69,7 +79,7 @@ func ComputeDirectoryHashes(dirPath string) ([]FileHash, error) {
 		return nil, err
 	}
 
-	// Sort the fileHashes by relative path to ensure a consistent order.
+	// Sort the file hashes by relative path to ensure a consistent order.
 	sort.Slice(fileHashes, func(i, j int) bool {
 		return fileHashes[i].RelativePath < fileHashes[j].RelativePath
 	})
@@ -82,6 +92,12 @@ func VerifyDirectoryHashes(dirPath string, fileHashes []FileHash) ([]string, err
 
 	for _, fh := range fileHashes {
 		fullPath := filepath.Join(dirPath, fh.RelativePath)
+		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+			// File does not exist, add to mismatched
+			mismatched = append(mismatched, fh.RelativePath)
+			continue
+		}
+
 		currentHash, err := Md5SumFile(fullPath)
 		if err != nil {
 			return nil, err

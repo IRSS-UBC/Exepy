@@ -3,10 +3,12 @@ package common
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"github.com/mholt/archiver/v4"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func getFormat() archiver.CompressedArchive {
@@ -17,7 +19,7 @@ func getFormat() archiver.CompressedArchive {
 	return format
 }
 
-func CompressDirToStream(directoryPath string) (io.ReadSeeker, error) {
+func CompressDirToStream(directoryPath string, ignoredDirs []string) (io.ReadSeeker, error) {
 	// Get the list of files and directories in the specified folder
 	FromDiskOptions := &archiver.FromDiskOptions{
 		FollowSymlinks:  false,
@@ -25,7 +27,7 @@ func CompressDirToStream(directoryPath string) (io.ReadSeeker, error) {
 	}
 
 	// map the files to the archive
-	pathMap, err := mapFilesAndDirectories(directoryPath)
+	pathMap, err := mapFilesAndDirectories(directoryPath, ignoredDirs)
 	if err != nil {
 		return nil, err
 	}
@@ -111,51 +113,66 @@ func DecompressIOStream(IOReader io.Reader, outputDir string) error {
 	return nil
 }
 
-func mapFilesAndDirectories(directoryPath string) (map[string]string, error) {
-
-	pathSeperator := string(os.PathSeparator)
-
-	// Initialize a map to store file names and their corresponding paths
+func mapFilesAndDirectories(directoryPath string, ignoredDirs []string) (map[string]string, error) {
+	// Initialize a map to store file names and their corresponding archive paths.
 	fileMap := make(map[string]string)
+	pathSeparator := string(os.PathSeparator)
 
-	// Walk through the directory
 	err := filepath.WalkDir(directoryPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		relativeDirPath, err := filepath.Rel(directoryPath, path)
+		// Compute the relative path from the base directory.
+		relativePath, err := filepath.Rel(directoryPath, path)
 		if err != nil {
 			return err
 		}
 
-		if d.IsDir() {
+		// Skip the root directory.
+		if relativePath == "." {
+			return nil
+		}
 
-			// Skip the root directory
-			if relativeDirPath == directoryPath {
-				return nil
+		// Check if any segment of the relative path matches an ignored directory.
+		segments := strings.Split(relativePath, string(os.PathSeparator))
+		for _, segment := range segments {
+			for _, ignored := range ignoredDirs {
+				if segment == ignored {
+					if d.IsDir() {
+						// Skip the directory and its contents.
+
+						fmt.Println("Skipping directory: ", path)
+
+						return filepath.SkipDir
+					}
+					// For files within an ignored directory, simply do not add them.
+					return nil
+				}
 			}
+		}
 
-			// Check if the directory is empty
+		if d.IsDir() {
+			// For directories, check if the directory is empty.
 			isEmpty, err := isDirEmpty(path)
 			if err != nil {
 				return err
 			}
 
-			// Use os.PathSeparator for the key and "/" for the value
+			// If the directory is empty, add it to the map with a trailing separator.
 			if isEmpty {
-				fileMap[path] = filepath.ToSlash(relativeDirPath + pathSeperator)
+				// The key uses the OS-specific separator,
+				// while the archive path uses forward slashes.
+				fileMap[path] = filepath.ToSlash(relativePath + pathSeparator)
 			}
-
-			return nil
+		} else {
+			// For files, simply map the path to its relative path.
+			fileMap[path] = filepath.ToSlash(relativePath)
 		}
-
-		fileMap[path] = filepath.ToSlash(relativeDirPath)
 
 		return nil
 	})
 
-	// Check for errors during the walk
 	if err != nil {
 		return nil, err
 	}
