@@ -7,17 +7,18 @@ import (
 )
 
 type PythonSetupSettings struct {
-	PythonDownloadURL string `json:"pythonDownloadURL"`
-	PipDownloadURL    string `json:"pipDownloadURL"`
-	PythonDownloadZip string `json:"pythonDownloadFile"`
-	PythonExtractDir  string `json:"pythonExtractDir"`
-	ScriptExtractDir  string `json:"scriptExtractDir"`
-	PthFile           string `json:"pthFile"`
-	PythonInteriorZip string `json:"pythonInteriorZip"`
-	RequirementsFile  string `json:"requirementsFile"`
-	ScriptDir         string `json:"scriptDir"`
-	SetupScript       string `json:"setupScript"`
-	MainScript        string `json:"mainScript"`
+	PythonDownloadURL string   `json:"pythonDownloadURL"`
+	PipDownloadURL    string   `json:"pipDownloadURL"`
+	PythonDownloadZip string   `json:"pythonDownloadFile"`
+	PythonExtractDir  string   `json:"pythonExtractDir"`
+	ScriptExtractDir  string   `json:"scriptExtractDir"`
+	PthFile           string   `json:"pthFile"`
+	PythonInteriorZip string   `json:"pythonInteriorZip"`
+	RequirementsFile  string   `json:"requirementsFile"`
+	ScriptDir         string   `json:"scriptDir"`
+	SetupScript       string   `json:"setupScript"`
+	MainScript        string   `json:"mainScript"`
+	FilesToCopyToRoot []string `json:"filesToCopyToRoot"`
 }
 
 func loadSettings(filename string) (*PythonSetupSettings, error) {
@@ -55,14 +56,15 @@ func LoadOrSaveDefault(filename string) (*PythonSetupSettings, error) {
 		settings = &PythonSetupSettings{
 			PythonDownloadURL: "",
 			PipDownloadURL:    "",
-			PythonDownloadZip: "",
-			PythonExtractDir:  "",
+			PythonDownloadZip: "python code-3.11.7-embed-amd64.zip",
+			PythonExtractDir:  "python-embed",
 			ScriptExtractDir:  "scripts",
-			PthFile:           "",
-			PythonInteriorZip: "",
+			PthFile:           "python311._pth",
+			PythonInteriorZip: "python311.zip",
 			ScriptDir:         "scripts",
-			RequirementsFile:  "",
-			MainScript:        "",
+			RequirementsFile:  "requirements.txt",
+			MainScript:        "main.py",
+			FilesToCopyToRoot: []string{"requirements.txt", "readme.md", "license.md"},
 		}
 
 		err = saveSettings(filename, settings)

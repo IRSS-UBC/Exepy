@@ -13,7 +13,7 @@ import (
 	"windowsPE"
 )
 
-const settingsFileName = "settings.json"
+const settingsFileName = "exepy.json"
 
 func createInstaller() {
 

@@ -123,10 +123,36 @@ func bootstrap(pure bool) {
 
 	}
 
-	//TODO: Add some form of hashing of the input files; E.g., make a list of all files present when making the installer and hash them
-	// Save the list of files and their hashes to a file in the installer
-	// When the installer is run, hash the same files and compare them to the saved hashes
+	// Create the run.bat
+	pythonExecutable := filepath.Join(settings.PythonExtractDir, "python.exe")
+	mainScriptPath := path.Join(settings.ScriptExtractDir, settings.MainScript)
 
+	// replace the placeholders in the runscript with the actual values
+	runScript = strings.ReplaceAll(runScript, "{{PYTHON_EXE}}", pythonExecutable)
+	runScript = strings.ReplaceAll(runScript, "{{MAIN_SCRIPT}}", mainScriptPath)
+	runScript = strings.ReplaceAll(runScript, "{{SCRIPTS_DIR}}", settings.ScriptExtractDir)
+
+	err = os.WriteFile("run.bat", []byte(runScript), 0644)
+
+	runBatPath, err := filepath.Abs("run.bat")
+	if err != nil {
+		fmt.Println("Error getting absolute path for run.bat:", err)
+		return
+	}
+
+	// Copy the files to the root directory if they are listed in the settings and they exist
+	for _, file := range settings.FilesToCopyToRoot {
+		filePath := path.Join(settings.ScriptExtractDir, file)
+		if common.DoesPathExist(filePath) {
+			err = common.CopyFile(filePath, file)
+			if err != nil {
+				fmt.Println("Error copying file to root:", err)
+				return
+			}
+		}
+	}
+
+	// Validate the integrity of the extracted files
 	EmbeddedIntegrityHashes := attachments.Reader(common.IntegrityFilename)
 
 	if EmbeddedIntegrityHashes == nil {
@@ -175,26 +201,9 @@ func bootstrap(pure bool) {
 		fmt.Println("Installation integrity validated successfully.")
 	}
 
-	attachments.Close()
-
 	// run the payload script
 
-	pythonExecutable := filepath.Join(settings.PythonExtractDir, "python.exe")
-	mainScriptPath := path.Join(settings.ScriptExtractDir, settings.MainScript)
-
-	// replace the placeholders in the runscript with the actual values
-	runScript = strings.ReplaceAll(runScript, "{{PYTHON_EXE}}", pythonExecutable)
-	runScript = strings.ReplaceAll(runScript, "{{MAIN_SCRIPT}}", mainScriptPath)
-	runScript = strings.ReplaceAll(runScript, "{{SCRIPTS_DIR}}", settings.ScriptExtractDir)
-
-	err = os.WriteFile("run.bat", []byte(runScript), 0644)
-
 	// get path to run.bat
-	runBatPath, err := filepath.Abs("run.bat")
-	if err != nil {
-		fmt.Println("Error getting absolute path for run.bat:", err)
-		return
-	}
 
 	if pure {
 		fmt.Println("Please run the following command in the command line to run the script:")
