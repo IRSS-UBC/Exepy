@@ -20,24 +20,7 @@ type ManifestEntry struct {
 	FilePath     string // Relative file path.
 }
 
-// WriteManifest writes the manifest to the writer using a fixed binary layout.
-// Layout:
-//
-//	Bytes 0-3   : Magic number (uint32)
-//	Bytes 4-7   : Version (uint32)
-//	Bytes 8-15  : Entry count (uint64)
-//	Followed by each entry:
-//	  Bytes 0-7   : HeaderOffset (uint64)
-//	  Bytes 8-15  : FileSize (uint64)
-//	  Byte 16     : FileType (byte)
-//	  Bytes 17-18 : FilePath length (uint16)
-//	  Bytes 19-?  : FilePath (variable, as bytes)
-//	Trailer (last 4 bytes): Magic number (uint32)
 func writeManifest(w io.Writer, entries []ManifestEntry) error {
-	// Calculate total size.
-	// Manifest header: 4 + 4 + 8 = 16 bytes.
-	// Each entry: 8 + 8 + 1 + 2 + len(FilePath) bytes.
-	// Trailer: 4 bytes.
 	totalSize := 16 + 4
 	for _, entry := range entries {
 		totalSize += 8 + 8 + 1 + 2 + len(entry.FilePath)

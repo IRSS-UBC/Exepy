@@ -9,18 +9,9 @@ import (
 )
 
 const (
-	headerSize = 512
-
-	// Default chunk size if not specified.
-	DefaultChunkSize = 4096
-
 	fileHeaderMagicNumber = 0x49525353 // 4-byte magic number
-
-	chunkHeaderSize = 4 + 8
-
-	chunkMagicNumber = 0xDEADBEEF
-
-	headerVersion = 1
+	headerSize            = 512
+	headerVersion         = 1
 )
 
 const (
@@ -57,14 +48,11 @@ func writeHeader(w io.Writer, fh fileHeader) error {
 	copy(headerBytes[8:8+len(pathBytes)], pathBytes)
 	headerBytes[8+len(pathBytes)] = 0 // Null terminator.
 
-	// Continue writing file size, file mode, mod time, file type, etc.
-	// For example:
 	binary.BigEndian.PutUint64(headerBytes[260:268], fh.FileSize)
 	binary.BigEndian.PutUint32(headerBytes[268:272], fh.FileMode)
 	binary.BigEndian.PutUint64(headerBytes[272:280], *(*uint64)(unsafe.Pointer(&fh.ModTime)))
 	headerBytes[280] = fh.FileType
 
-	// Symlink target and reserved bytes as before.
 	if fh.FileType == fileTypeSymlink {
 		targetBytes := []byte(fh.LinkTarget)
 		if len(targetBytes) >= 128 {
@@ -100,7 +88,6 @@ func readHeader(r io.Reader) (fileHeader, error) {
 	}
 	fh.FilePath = string(pathData[:zeroIndex])
 
-	// Read remaining fields as before.
 	fh.FileSize = binary.BigEndian.Uint64(headerBytes[260:268])
 	fh.FileMode = binary.BigEndian.Uint32(headerBytes[268:272])
 	uModTime := binary.BigEndian.Uint64(headerBytes[272:280])

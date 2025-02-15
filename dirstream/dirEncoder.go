@@ -2,16 +2,11 @@ package dirstream
 
 import (
 	"bufio"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 )
-
-// -----------------------------------------------------------------------------
-// Encoder
-// -----------------------------------------------------------------------------
 
 // Encoder encodes a file system tree into a single io.Reader stream.
 type Encoder struct {
@@ -123,27 +118,9 @@ func (e *Encoder) Encode() (io.Reader, error) {
 				}
 				defer file.Close()
 
-				buf := make([]byte, e.chunkSize)
-				for {
-					n, err := file.Read(buf)
-					if n > 0 {
-						// Write chunk header: 4 bytes for magic number and 8 bytes for chunk length.
-						chunkHeader := make([]byte, chunkHeaderSize)
-						binary.BigEndian.PutUint32(chunkHeader[0:4], chunkMagicNumber)
-						binary.BigEndian.PutUint64(chunkHeader[4:12], uint64(n))
-						if _, err := bufferedWriter.Write(chunkHeader); err != nil {
-							return err
-						}
-						if _, err := bufferedWriter.Write(buf[:n]); err != nil {
-							return err
-						}
-					}
-					if err == io.EOF {
-						break
-					}
-					if err != nil {
-						return err
-					}
+				// Use the helper function to write file data in chunks.
+				if err := writeChunks(bufferedWriter, file, e.chunkSize); err != nil {
+					return err
 				}
 				fmt.Printf("Encoded file: %s\n", relPath)
 			} else if fh.FileType == fileTypeDirectory {

@@ -10,10 +10,6 @@ import (
 	"path/filepath"
 )
 
-// -----------------------------------------------------------------------------
-// Decoder
-// -----------------------------------------------------------------------------
-
 // Decoder decodes an encoded stream back into files, directories, and symlinks.
 type Decoder struct {
 	destPath   string
@@ -118,56 +114,25 @@ func (d *Decoder) Decode(r io.Reader) error {
 			fmt.Printf("Decoded symlink: %s -> %s\n", fullPath, fh.LinkTarget)
 			continue
 		case fileTypeRegular:
-			// Proceed to decode file contents.
+			file, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(fh.FileMode))
+			if err != nil {
+				return fmt.Errorf("Decode: error opening file %s: %v", fullPath, err)
+			}
+
+			if err := readChunks(bufferedReader, file, fh.FileSize, d.chunkSize); err != nil {
+				file.Close()
+				return fmt.Errorf("Decode: error reading chunks for file %s: %v", fh.FilePath, err)
+			}
+			file.Close()
+			fmt.Printf("Decoded file: %s\n", fullPath)
+
+			file.Close()
+			fmt.Printf("Decoded file: %s\n", fullPath)
+			continue
 		default:
 			return fmt.Errorf("Decode: unknown file type for %s", fh.FilePath)
 		}
 
-		file, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(fh.FileMode))
-		if err != nil {
-			return fmt.Errorf("Decode: error opening file %s: %v", fullPath, err)
-		}
-
-		var totalRead uint64 = 0
-		fmt.Printf("Decoding file: %s (expected size: %d bytes)\n", fullPath, fh.FileSize)
-		for totalRead < fh.FileSize {
-			fmt.Printf("File %s: Reading chunk header at offset %d (expecting %d bytes)\n", fh.FilePath, totalRead, chunkHeaderSize)
-			chunkHeader := make([]byte, chunkHeaderSize)
-			n, err := io.ReadFull(bufferedReader, chunkHeader)
-			if err != nil {
-				file.Close()
-				return fmt.Errorf("Decode: error reading chunk header for file %s at offset %d: expected %d bytes, got %d: %w", fh.FilePath, totalRead, chunkHeaderSize, n, err)
-			}
-
-			readMagic := binary.BigEndian.Uint32(chunkHeader[0:4])
-			if readMagic != chunkMagicNumber {
-				file.Close()
-				return fmt.Errorf("Decode: invalid chunk header magic for file %s at offset %d", fh.FilePath, totalRead)
-			}
-
-			chunkLength := binary.BigEndian.Uint64(chunkHeader[4:12])
-			if chunkLength > uint64(d.chunkSize) {
-				file.Close()
-				return fmt.Errorf("Decode: invalid chunk length %d for file %s at offset %d", chunkLength, fh.FilePath, totalRead)
-			}
-
-			// Debug: indicate we are about to read chunk data.
-			fmt.Printf("File %s: Reading chunk data at offset %d (expecting %d bytes)\n", fh.FilePath, totalRead, chunkLength)
-			chunkData := make([]byte, chunkLength)
-			n, err = io.ReadFull(bufferedReader, chunkData)
-			if err != nil {
-				file.Close()
-				return fmt.Errorf("Decode: error reading chunk data for file %s at offset %d: expected %d bytes, got %d: %w", fh.FilePath, totalRead, chunkLength, n, err)
-			}
-
-			if _, err := file.Write(chunkData); err != nil {
-				file.Close()
-				return fmt.Errorf("Decode: error writing to file %s at offset %d: %w", fh.FilePath, totalRead, err)
-			}
-			totalRead += chunkLength
-		}
-		file.Close()
-		fmt.Printf("Decoded file: %s\n", fullPath)
 	}
 
 	return nil
