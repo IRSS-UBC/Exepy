@@ -2,120 +2,125 @@ package main
 
 import (
 	"dirstream"
+	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
-// main provides a simple interactive interface for encoding and decoding.
+// main provides a command-line interface for encoding and decoding.
 func main() {
-	interactiveTest()
-}
+	// Define command-line flags.
+	encodeCmd := flag.NewFlagSet("encode", flag.ExitOnError)
+	encodeSourceDir := encodeCmd.String("source", "", "Source directory to encode (required)")
+	encodeOutputFile := encodeCmd.String("output", "output.stream", "Output file name")
 
-// interactiveTest provides an interactive way to test encoding/decoding.
-func interactiveTest() {
-	fmt.Println("\nInteractive Test:")
-	fmt.Println("1. Encode a directory")
-	fmt.Println("2. Decode a stream")
-	fmt.Println("3. Exit")
+	decodeCmd := flag.NewFlagSet("decode", flag.ExitOnError)
+	decodeInputFile := decodeCmd.String("input", "output.stream", "Input file to decode")
+	decodeDestDir := decodeCmd.String("dest", "", "Destination directory (required)")
+	decodeStrictMode := decodeCmd.Bool("strict", false, "Enable strict mode for decoding")
 
-	var choice string
-	fmt.Print("Enter your choice: ")
-	fmt.Scanln(&choice)
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: dirstream <command> [options]")
+		fmt.Println("Commands: encode, decode")
+		os.Exit(1)
+	}
 
-	switch choice {
-	case "1":
-		var sourceDir string
-		fmt.Print("Enter source directory: ")
-		fmt.Scanln(&sourceDir)
-		// Sanitize input.
-		sourceDir = filepath.Clean(sourceDir)
-		if !strings.HasPrefix(sourceDir, "/") {
-			currentDir, _ := os.Getwd()
-			sourceDir = filepath.Join(currentDir, sourceDir)
+	switch os.Args[1] {
+	case "encode":
+		encodeCmd.Parse(os.Args[2:])
+		if *encodeSourceDir == "" {
+			fmt.Fprintln(os.Stderr, "Error: Source directory is required for encoding.")
+			encodeCmd.PrintDefaults()
+			os.Exit(1)
 		}
-		if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "Source directory does not exist: %s\n", sourceDir)
-			return
-		}
+		encode(*encodeSourceDir, *encodeOutputFile)
 
-		encoder := dirstream.NewEncoder(sourceDir, dirstream.DefaultChunkSize)
-		stream, err := encoder.Encode()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Encoding error: %v\n", err)
-			return
+	case "decode":
+		decodeCmd.Parse(os.Args[2:])
+		if *decodeDestDir == "" {
+			fmt.Fprintln(os.Stderr, "Error: Destination directory is required for decoding.")
+			decodeCmd.PrintDefaults()
+			os.Exit(1)
 		}
-
-		var outputFile string
-		fmt.Print("Enter output file name (or leave blank for output.stream): ")
-		fmt.Scanln(&outputFile)
-		if outputFile == "" {
-			outputFile = "output.stream"
-		}
-		outputFile = filepath.Clean(outputFile)
-		if !strings.HasPrefix(outputFile, "/") {
-			currentDir, _ := os.Getwd()
-			outputFile = filepath.Join(currentDir, outputFile)
-		}
-
-		f, err := os.Create(outputFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
-			return
-		}
-		defer f.Close()
-
-		_, err = io.Copy(f, stream)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error writing to output file: %v\n", err)
-			return
-		}
-		fmt.Println("Encoding successful. Output written to", outputFile)
-
-	case "2":
-		var inputFile string
-		fmt.Print("Enter input file name (or leave blank for output.stream): ")
-		fmt.Scanln(&inputFile)
-		if inputFile == "" {
-			inputFile = "output.stream"
-		}
-		inputFile = filepath.Clean(inputFile)
-		if !strings.HasPrefix(inputFile, "/") {
-			currentDir, _ := os.Getwd()
-			inputFile = filepath.Join(currentDir, inputFile)
-		}
-
-		f, err := os.Open(inputFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error opening input file: %v\n", err)
-			return
-		}
-		defer f.Close()
-
-		var destDir string
-		fmt.Print("Enter destination directory: ")
-		fmt.Scanln(&destDir)
-		destDir = filepath.Clean(destDir)
-		if !strings.HasPrefix(destDir, "/") {
-			currentDir, _ := os.Getwd()
-			destDir = filepath.Join(currentDir, destDir)
-		}
-
-		// Create decoder with strict mode disabled.
-		decoder := dirstream.NewDecoder(destDir, false, dirstream.DefaultChunkSize)
-		err = decoder.Decode(f)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Decoding error: %v\n", err)
-			return
-		}
-		fmt.Println("Decoding successful. Files written to", destDir)
-
-	case "3":
-		return
+		decode(*decodeInputFile, *decodeDestDir, *decodeStrictMode)
 
 	default:
-		fmt.Println("Invalid choice.")
+		fmt.Println("Usage: dirstream <command> [options]")
+		fmt.Println("Commands: encode, decode")
+		os.Exit(1)
 	}
+}
+
+// encode handles the encoding process.
+func encode(sourceDir, outputFile string) {
+	// Sanitize input
+	sourceDir, err := filepath.Abs(sourceDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid source directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Source directory does not exist: %s\n", sourceDir)
+		os.Exit(1)
+	}
+
+	encoder := dirstream.NewEncoder(sourceDir, dirstream.DefaultChunkSize)
+	stream, err := encoder.Encode()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Encoding error: %v\n", err)
+		os.Exit(1)
+	}
+
+	outputFile, err = filepath.Abs(outputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid output file path: %v\n", err)
+		os.Exit(1)
+	}
+
+	f, err := os.Create(outputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
+		os.Exit(1)
+	}
+	defer f.Close()
+
+	_, err = io.Copy(f, stream)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing to output file: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Encoding successful. Output written to", outputFile)
+}
+
+// decode handles the decoding process.
+func decode(inputFile, destDir string, strictMode bool) {
+	inputFile, err := filepath.Abs(inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid input file path: %v\n", err)
+		os.Exit(1)
+	}
+
+	f, err := os.Open(inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening input file: %v\n", err)
+		os.Exit(1)
+	}
+	defer f.Close()
+
+	destDir, err = filepath.Abs(destDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid destination directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	decoder := dirstream.NewDecoder(destDir, strictMode, dirstream.DefaultChunkSize) // Use strictMode from arguments
+	err = decoder.Decode(f)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Decoding error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Decoding successful. Files written to", destDir)
 }

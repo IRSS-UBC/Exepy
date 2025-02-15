@@ -14,12 +14,14 @@ const (
 	// Default chunk size if not specified.
 	DefaultChunkSize = 4096
 
+	HeaderMagicNumber = 0x49525353 // 4-byte magic string
+
 	// Each chunk is preceded by a header:
 	// 4 bytes for the magic number and 8 bytes for the chunk length.
 	chunkHeaderSize = 4 + 8
 
 	// Magic number for chunk header identification.
-	magicNumber = 0xDEADBEEF
+	chunkMagicNumber = 0xDEADBEEF
 
 	// Header version for our file header format.
 	headerVersion = 1
@@ -42,38 +44,31 @@ type fileHeader struct {
 	LinkTarget string // For symlinks, the target path (max 128 bytes including null terminator).
 }
 
-// -----------------------------------------------------------------------------
-// Header Serialization / Deserialization
-// -----------------------------------------------------------------------------
-
-// writeHeader writes a fixed 512-byte header to the writer.
 func writeHeader(w io.Writer, fh fileHeader) error {
 	headerBytes := make([]byte, headerSize)
 
-	// Bytes 0-3: Header version.
-	binary.BigEndian.PutUint32(headerBytes[0:4], fh.Version)
+	// Bytes 0-3: Magic string.
+	binary.BigEndian.PutUint32(headerBytes[0:4], HeaderMagicNumber)
 
-	// Bytes 4-259: File path (null-terminated).
+	// Bytes 4-7: Header version.
+	binary.BigEndian.PutUint32(headerBytes[4:8], fh.Version)
+
+	// Bytes 8-263: File path (null-terminated).
 	pathBytes := []byte(fh.FilePath)
 	if len(pathBytes) >= 256 {
 		return fmt.Errorf("file path too long: %s", fh.FilePath)
 	}
-	copy(headerBytes[4:4+len(pathBytes)], pathBytes)
-	headerBytes[4+len(pathBytes)] = 0 // Null terminator.
+	copy(headerBytes[8:8+len(pathBytes)], pathBytes)
+	headerBytes[8+len(pathBytes)] = 0 // Null terminator.
 
-	// Bytes 260-267: File size.
+	// Continue writing file size, file mode, mod time, file type, etc.
+	// For example:
 	binary.BigEndian.PutUint64(headerBytes[260:268], fh.FileSize)
-
-	// Bytes 268-271: File mode.
 	binary.BigEndian.PutUint32(headerBytes[268:272], fh.FileMode)
-
-	// Bytes 272-279: Modification time.
 	binary.BigEndian.PutUint64(headerBytes[272:280], uint64(fh.ModTime))
-
-	// Byte 280: File type.
 	headerBytes[280] = fh.FileType
 
-	// Bytes 281-408: Symlink target (if applicable; null-terminated).
+	// Symlink target and reserved bytes as before.
 	if fh.FileType == FileTypeSymlink {
 		targetBytes := []byte(fh.LinkTarget)
 		if len(targetBytes) >= 128 {
@@ -83,42 +78,38 @@ func writeHeader(w io.Writer, fh fileHeader) error {
 		headerBytes[281+len(targetBytes)] = 0 // Null terminator.
 	}
 
-	// The remaining bytes are reserved (zeroed by default).
 	_, err := w.Write(headerBytes)
 	return err
 }
 
-// readHeader reads and parses a 512-byte file header from the reader.
 func readHeader(r io.Reader) (fileHeader, error) {
 	headerBytes := make([]byte, headerSize)
 	if _, err := io.ReadFull(r, headerBytes); err != nil {
 		return fileHeader{}, err
 	}
 
-	fh := fileHeader{}
-	fh.Version = binary.BigEndian.Uint32(headerBytes[0:4])
+	// Validate magic string.
+	if binary.BigEndian.Uint32(headerBytes[0:4]) != HeaderMagicNumber {
+		return fileHeader{}, fmt.Errorf("invalid header magic: expected %d, got %d", HeaderMagicNumber, binary.BigEndian.Uint32(headerBytes[0:4]))
+	}
 
-	// Bytes 4-259: File path.
-	pathData := headerBytes[4:260]
+	fh := fileHeader{}
+	fh.Version = binary.BigEndian.Uint32(headerBytes[4:8])
+
+	// Read file path from bytes 8-263.
+	pathData := headerBytes[8:264]
 	zeroIndex := bytes.IndexByte(pathData, 0)
 	if zeroIndex == -1 {
 		zeroIndex = len(pathData)
 	}
 	fh.FilePath = string(pathData[:zeroIndex])
 
-	// Bytes 260-267: File size.
+	// Read remaining fields as before.
 	fh.FileSize = binary.BigEndian.Uint64(headerBytes[260:268])
-
-	// Bytes 268-271: File mode.
 	fh.FileMode = binary.BigEndian.Uint32(headerBytes[268:272])
-
-	// Bytes 272-279: Modification time.
 	fh.ModTime = int64(binary.BigEndian.Uint64(headerBytes[272:280]))
-
-	// Byte 280: File type.
 	fh.FileType = headerBytes[280]
 
-	// Bytes 281-408: Symlink target (if applicable).
 	if fh.FileType == FileTypeSymlink {
 		targetData := headerBytes[281:409]
 		zeroIndex = bytes.IndexByte(targetData, 0)
