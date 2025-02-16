@@ -69,13 +69,13 @@ func bootstrap(pure bool) {
 			return
 		}
 
-		err = common.DecompressIOStream(PythonReader, settings.PythonExtractDir)
+		err = common.StreamToDir(PythonReader, settings.PythonExtractDir)
 		if err != nil {
 			fmt.Println("Error extracting Python zip file:", err)
 			return
 		}
 
-		err = common.DecompressIOStream(PayloadReader, settings.ScriptExtractDir)
+		err = common.StreamToDir(PayloadReader, settings.ScriptExtractDir)
 		if err != nil {
 			fmt.Println("Error extracting payload zip file:", err)
 			return
@@ -83,7 +83,7 @@ func bootstrap(pure bool) {
 
 		wheelsDir := path.Join(settings.PythonExtractDir, common.WheelsFilename)
 
-		err = common.DecompressIOStream(wheelsReader, wheelsDir)
+		err = common.StreamToDir(wheelsReader, wheelsDir)
 		if err != nil {
 			fmt.Println("Error extracting wheels zip file:", err)
 			return

@@ -1,7 +1,6 @@
-package main
+package dirstream
 
 import (
-	"dirstream"
 	"flag"
 	"fmt"
 	"io"
@@ -63,9 +62,9 @@ func encode(sourceDir, outputFile string) {
 		os.Exit(1)
 	}
 
-	files, _ := dirstream.BuildRelativeFileList(sourceDir, nil)
+	files, _ := BuildRelativeFileList(sourceDir, nil)
 
-	encoder := dirstream.NewEncoder(sourceDir, dirstream.DefaultChunkSize)
+	encoder := NewEncoder(sourceDir, DefaultChunkSize)
 	stream, err := encoder.Encode(files)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Encoding error: %v\n", err)
@@ -113,7 +112,7 @@ func decode(inputFile, destDir string, strictMode bool) {
 		os.Exit(1)
 	}
 
-	decoder := dirstream.NewDecoder(destDir, strictMode, dirstream.DefaultChunkSize) // Use strictMode from arguments
+	decoder := NewDecoder(destDir, strictMode, DefaultChunkSize) // Use strictMode from arguments
 	err = decoder.Decode(f)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Decoding error: %v\n", err)

@@ -44,7 +44,7 @@ func PreparePython(settings common.PythonSetupSettings) (io.ReadSeeker, io.ReadS
 	destRequirements := filepath.Join(settings.PythonExtractDir, settings.RequirementsFile)
 	common.CopyFile(originRequirements, destRequirements)
 
-	pythonStream, err := common.CompressDirToStream(settings.PythonExtractDir, []string{})
+	pythonStream, err := common.DirToStream(settings.PythonExtractDir, []string{})
 
 	if err != nil {
 		fmt.Println("Error zipping Python directory:", err)
@@ -67,7 +67,7 @@ func PreparePython(settings common.PythonSetupSettings) (io.ReadSeeker, io.ReadS
 
 	}
 
-	wheelsStream, _ := common.CompressDirToStream(wheelsPath, []string{})
+	wheelsStream, _ := common.DirToStream(wheelsPath, []string{})
 
 	return pythonStream, wheelsStream, nil
 }

@@ -70,7 +70,7 @@ func createInstaller() {
 		panic(err)
 	}
 
-	PayloadFile, err := common.CompressDirToStream(settings.ScriptDir, ignoredDirs)
+	PayloadFile, err := common.DirToStream(settings.ScriptDir, ignoredDirs)
 	if err != nil {
 		panic(err)
 	}
