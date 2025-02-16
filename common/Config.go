@@ -3,26 +3,27 @@ package common
 import (
 	"encoding/json"
 	"errors"
-	"io/ioutil"
+	"os"
 )
 
 type PythonSetupSettings struct {
-	PythonDownloadURL string   `json:"pythonDownloadURL"`
-	PipDownloadURL    string   `json:"pipDownloadURL"`
-	PythonDownloadZip string   `json:"pythonDownloadFile"`
-	PythonExtractDir  string   `json:"pythonExtractDir"`
-	ScriptExtractDir  string   `json:"scriptExtractDir"`
-	PthFile           string   `json:"pthFile"`
-	PythonInteriorZip string   `json:"pythonInteriorZip"`
-	RequirementsFile  string   `json:"requirementsFile"`
-	ScriptDir         string   `json:"scriptDir"`
-	SetupScript       string   `json:"setupScript"`
-	MainScript        string   `json:"mainScript"`
-	FilesToCopyToRoot []string `json:"filesToCopyToRoot"`
+	PythonDownloadURL     string   `json:"pythonDownloadURL"`
+	PipDownloadURL        string   `json:"pipDownloadURL"`
+	PythonDownloadZip     string   `json:"pythonDownloadFile"`
+	PythonExtractDir      string   `json:"pythonExtractDir"`
+	ScriptExtractDir      string   `json:"scriptExtractDir"`
+	PthFile               string   `json:"pthFile"`
+	PythonInteriorZip     string   `json:"pythonInteriorZip"`
+	InstallerRequirements string   `json:"installerRequirements"` // This is the requirements file that will be used to build the wheels for the installer. It is not included in the installer.
+	RequirementsFile      string   `json:"requirementsFile"`      // This is the requirements file that will be used at install-time to install the wheels.
+	ScriptDir             string   `json:"scriptDir"`
+	SetupScript           string   `json:"setupScript"`
+	MainScript            string   `json:"mainScript"`
+	FilesToCopyToRoot     []string `json:"filesToCopyToRoot"`
 }
 
 func loadSettings(filename string) (*PythonSetupSettings, error) {
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +43,7 @@ func saveSettings(filename string, settings *PythonSetupSettings) error {
 		return err
 	}
 
-	err = ioutil.WriteFile(filename, data, 0644)
+	err = os.WriteFile(filename, data, 0644)
 	if err != nil {
 		return err
 	}
@@ -54,17 +55,18 @@ func LoadOrSaveDefault(filename string) (*PythonSetupSettings, error) {
 	settings, err := loadSettings(filename)
 	if err != nil {
 		settings = &PythonSetupSettings{
-			PythonDownloadURL: "",
-			PipDownloadURL:    "",
-			PythonDownloadZip: "python code-3.11.7-embed-amd64.zip",
-			PythonExtractDir:  "python-embed",
-			ScriptExtractDir:  "scripts",
-			PthFile:           "python311._pth",
-			PythonInteriorZip: "python311.zip",
-			ScriptDir:         "scripts",
-			RequirementsFile:  "requirements.txt",
-			MainScript:        "main.py",
-			FilesToCopyToRoot: []string{"requirements.txt", "readme.md", "license.md"},
+			PythonDownloadURL:     "",
+			PipDownloadURL:        "",
+			PythonDownloadZip:     "python code-3.11.7-embed-amd64.zip",
+			PythonExtractDir:      "python-embed",
+			ScriptExtractDir:      "scripts",
+			PthFile:               "python311._pth",
+			PythonInteriorZip:     "python311.zip",
+			InstallerRequirements: "requirements.txt",
+			RequirementsFile:      "requirements.txt",
+			ScriptDir:             "scripts",
+			MainScript:            "main.py",
+			FilesToCopyToRoot:     []string{"requirements.txt", "readme.md", "license.md"},
 		}
 
 		err = saveSettings(filename, settings)
@@ -73,7 +75,7 @@ func LoadOrSaveDefault(filename string) (*PythonSetupSettings, error) {
 		}
 
 		if settings.MainScript == "" {
-			return nil, errors.New("mainScript is required in settings.json. Please add it and try again")
+			return nil, errors.New("mainScript is required in " + filename + ". Please add it and try again")
 		}
 	}
 

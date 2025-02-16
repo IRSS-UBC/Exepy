@@ -54,15 +54,15 @@ func PreparePython(settings common.PythonSetupSettings) (io.ReadSeeker, io.ReadS
 	wheelsPath := filepath.Join(settings.PythonExtractDir, "wheels")
 	os.Mkdir(wheelsPath, os.ModePerm)
 
-	if settings.RequirementsFile != "" {
+	if settings.InstallerRequirements != "" {
 
-		if common.DoesPathExist(originRequirements) {
-			fmt.Println("Requirements file found:", originRequirements)
-			if err := buildRequirementWheels(settings.PythonExtractDir, originRequirements, wheelsPath); err != nil {
+		if common.DoesPathExist(settings.InstallerRequirements) {
+			fmt.Println("Requirements file found:", settings.InstallerRequirements)
+			if err := buildRequirementWheels(settings.PythonExtractDir, settings.InstallerRequirements, wheelsPath); err != nil {
 				return nil, nil, err
 			}
 		} else {
-			fmt.Println("Requirements file not found but is specified in configuration:", originRequirements)
+			fmt.Println("Requirements file not found but is specified in configuration:", settings.InstallerRequirements)
 		}
 
 	}

@@ -32,23 +32,29 @@ func BuildRelativeFileList(rootPath string, excludes []string) ([]string, error)
 			return err
 		}
 
-		for _, exclude := range excludes {
-			if strings.Contains(path, exclude) {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-		}
-
+		// Get the relative path from the root
 		relPath, err := filepath.Rel(rootPath, path)
 		if err != nil {
 			return err
 		}
 
-		// ADD THIS CHECK:
+		// Skip the root path itself.
 		if relPath == "." {
-			return nil // Skip the root path itself
+			return nil
+		}
+
+		// Check if the current directory or file should be excluded.
+		for _, exclude := range excludes {
+			// Use filepath.Base to get the name of the file or directory.
+			baseName := filepath.Base(path)
+
+			// Only skip if the base name exactly matches the exclude pattern.
+			if baseName == exclude {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 		}
 
 		files = append(files, relPath)

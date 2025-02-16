@@ -123,23 +123,6 @@ func bootstrap(pure bool) {
 
 	}
 
-	// Create the run.bat
-	pythonExecutable := filepath.Join(settings.PythonExtractDir, "python.exe")
-	mainScriptPath := path.Join(settings.ScriptExtractDir, settings.MainScript)
-
-	// replace the placeholders in the runscript with the actual values
-	runScript = strings.ReplaceAll(runScript, "{{PYTHON_EXE}}", pythonExecutable)
-	runScript = strings.ReplaceAll(runScript, "{{MAIN_SCRIPT}}", mainScriptPath)
-	runScript = strings.ReplaceAll(runScript, "{{SCRIPTS_DIR}}", settings.ScriptExtractDir)
-
-	err = os.WriteFile("run.bat", []byte(runScript), 0644)
-
-	runBatPath, err := filepath.Abs("run.bat")
-	if err != nil {
-		fmt.Println("Error getting absolute path for run.bat:", err)
-		return
-	}
-
 	// Copy the files to the root directory if they are listed in the settings and they exist
 	for _, file := range settings.FilesToCopyToRoot {
 		filePath := path.Join(settings.ScriptExtractDir, file)
@@ -201,23 +184,45 @@ func bootstrap(pure bool) {
 		fmt.Println("Installation integrity validated successfully.")
 	}
 
-	// run the payload script
-
-	// get path to run.bat
-
-	if pure {
-		fmt.Println("Please run the following command in the command line to run the script:")
-		fmt.Println(runBatPath)
+	// if main script is not set, exit, as there is nothing to run
+	if settings.MainScript == "" {
+		fmt.Println("Files installed successfully. Exiting.")
+		return
 	} else {
 
-		fmt.Println("Running script...")
+		// Create the run.bat
+		pythonExecutable := filepath.Join(settings.PythonExtractDir, "python.exe")
+		mainScriptPath := path.Join(settings.ScriptExtractDir, settings.MainScript)
 
-		if err := common.RunCommand(runBatPath, os.Args[1:]); err != nil {
-			fmt.Println("Error running script:", err)
+		// replace the placeholders in the runscript with the actual values
+		runScript = strings.ReplaceAll(runScript, "{{PYTHON_EXE}}", pythonExecutable)
+		runScript = strings.ReplaceAll(runScript, "{{MAIN_SCRIPT}}", mainScriptPath)
+		runScript = strings.ReplaceAll(runScript, "{{SCRIPTS_DIR}}", settings.ScriptExtractDir)
+
+		err = os.WriteFile("run.bat", []byte(runScript), 0644)
+
+		runBatPath, err := filepath.Abs("run.bat")
+		if err != nil {
+			fmt.Println("Error getting absolute path for run.bat:", err)
 			return
 		}
 
-		fmt.Println("Script completed.")
+		// run the payload script
+		if pure {
+			fmt.Println("Please run the following command in the command line to run the script:")
+			fmt.Println(runBatPath)
+		} else {
+
+			fmt.Println("Running script...")
+
+			if err := common.RunCommand(runBatPath, os.Args[1:]); err != nil {
+				fmt.Println("Error running script:", err)
+				return
+			}
+
+			fmt.Println("Script completed.")
+		}
+
 	}
 
 }
