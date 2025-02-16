@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 )
 
 const (
@@ -13,7 +12,6 @@ const (
 	manifestVersion     = 1
 )
 
-// ManifestEntry represents a single entry in the manifest.
 type ManifestEntry struct {
 	HeaderOffset uint64 // Offset where the file's header starts in the stream.
 	FileSize     uint64 // File size in bytes.
@@ -21,14 +19,8 @@ type ManifestEntry struct {
 	FilePath     string // Relative file path.
 }
 
-// writeManifest writes the manifest with the following layout:
-//   - Manifest header: 16 bytes (4 bytes magic, 4 bytes version, 8 bytes entry count)
-//   - For each entry: 8 bytes HeaderOffset, 8 bytes FileSize, 1 byte FileType,
-//     2 bytes FilePath length, variable-length FilePath
-//   - Trailer: 4 bytes (same magic number)
-//   - CRC: 4 bytes (CRC32 computed over everything above)
+// writeManifest writes the manifest
 func writeManifest(w io.Writer, entries []ManifestEntry) error {
-	// Calculate total size.
 	// Header (16 bytes) + Trailer (4 bytes) + CRC (4 bytes)
 	totalSize := 16 + 4 + 4
 	// For each entry: fixed part (8+8+1+2 = 19 bytes) + file path length.
@@ -39,7 +31,6 @@ func writeManifest(w io.Writer, entries []ManifestEntry) error {
 	buf := make([]byte, totalSize)
 	offset := 0
 
-	// Write manifest header (16 bytes).
 	binary.BigEndian.PutUint32(buf[offset:offset+4], manifestMagicNumber)
 	offset += 4
 	binary.BigEndian.PutUint32(buf[offset:offset+4], manifestVersion)
@@ -47,7 +38,6 @@ func writeManifest(w io.Writer, entries []ManifestEntry) error {
 	binary.BigEndian.PutUint64(buf[offset:offset+8], uint64(len(entries)))
 	offset += 8
 
-	// Write each manifest entry.
 	for _, entry := range entries {
 		// Write HeaderOffset (8 bytes).
 		binary.BigEndian.PutUint64(buf[offset:offset+8], entry.HeaderOffset)
@@ -88,92 +78,82 @@ func writeManifest(w io.Writer, entries []ManifestEntry) error {
 	return err
 }
 
-// readManifest reads the entire manifest from the reader, verifies the CRC,
-// and parses the manifest entries.
+// readManifest reads the manifest from the reader in a streaming fashion.
+// It reads each part sequentially while updating a CRC32 hash, and then verifies the stored CRC.
 func readManifest(r io.Reader) ([]ManifestEntry, error) {
-	// Read the entire manifest into memory.
-	buf, err := ioutil.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("error reading manifest: %v", err)
+	h := crc32.NewIEEE()
+	tr := io.TeeReader(r, h)
+
+	// Read the manifest header (16 bytes):
+	//   - 4 bytes magic number
+	//   - 4 bytes version
+	//   - 8 bytes entry count
+	header := make([]byte, 16)
+	if _, err := io.ReadFull(tr, header); err != nil {
+		return nil, fmt.Errorf("error reading manifest header: %w", err)
 	}
 
-	// The manifest must be at least header (16) + trailer (4) + CRC (4) = 24 bytes.
-	if len(buf) < 24 {
-		return nil, fmt.Errorf("manifest too short: %d bytes", len(buf))
-	}
-
-	// The last 4 bytes are the CRC.
-	crcStored := binary.BigEndian.Uint32(buf[len(buf)-4:])
-	crcCalculated := crc32.ChecksumIEEE(buf[:len(buf)-4])
-	if crcStored != crcCalculated {
-		return nil, fmt.Errorf("manifest CRC mismatch: expected 0x%X, got 0x%X", crcStored, crcCalculated)
-	}
-
-	// Parse the manifest (excluding the final 4-byte CRC).
-	offset := 0
-
-	// Manifest header (16 bytes).
-	magic := binary.BigEndian.Uint32(buf[offset : offset+4])
-	offset += 4
+	magic := binary.BigEndian.Uint32(header[0:4])
+	version := binary.BigEndian.Uint32(header[4:8])
+	entryCount := binary.BigEndian.Uint64(header[8:16])
 	if magic != manifestMagicNumber {
 		return nil, fmt.Errorf("invalid manifest magic: expected 0x%X, got 0x%X", manifestMagicNumber, magic)
 	}
-
-	version := binary.BigEndian.Uint32(buf[offset : offset+4])
-	offset += 4
 	if version != manifestVersion {
 		return nil, fmt.Errorf("unsupported manifest version: %d", version)
 	}
 
-	entryCount := binary.BigEndian.Uint64(buf[offset : offset+8])
-	offset += 8
+	// Prepare a slice to hold the entries.
+	entries := make([]ManifestEntry, 0, entryCount)
 
-	entries := make([]ManifestEntry, entryCount)
-
-	// Parse each manifest entry.
+	// Process each manifest entry.
 	for i := uint64(0); i < entryCount; i++ {
-		// Each entry's fixed part is 8+8+1+2 = 19 bytes.
-		if offset+19 > len(buf)-4 {
-			return nil, fmt.Errorf("manifest entry %d incomplete", i)
+		// Read the fixed part (19 bytes).
+		fixedPart := make([]byte, 19)
+		if _, err := io.ReadFull(tr, fixedPart); err != nil {
+			return nil, fmt.Errorf("error reading fixed part for manifest entry %d: %w", i, err)
 		}
 
-		headerOffset := binary.BigEndian.Uint64(buf[offset : offset+8])
-		offset += 8
-		fileSize := binary.BigEndian.Uint64(buf[offset : offset+8])
-		offset += 8
-		fileType := buf[offset]
-		offset++
-		pathLen := binary.BigEndian.Uint16(buf[offset : offset+2])
-		offset += 2
+		headerOffset := binary.BigEndian.Uint64(fixedPart[0:8])
+		fileSize := binary.BigEndian.Uint64(fixedPart[8:16])
+		fileType := fixedPart[16]
+		pathLen := binary.BigEndian.Uint16(fixedPart[17:19])
 
-		// Read the file path.
-		if offset+int(pathLen) > len(buf)-4 {
-			return nil, fmt.Errorf("manifest entry %d file path incomplete", i)
+		// Read the variable-length FilePath.
+		pathBytes := make([]byte, pathLen)
+		if _, err := io.ReadFull(tr, pathBytes); err != nil {
+			return nil, fmt.Errorf("error reading file path for manifest entry %d: %w", i, err)
 		}
-		filePath := string(buf[offset : offset+int(pathLen)])
-		offset += int(pathLen)
+		filePath := string(pathBytes)
 
-		entries[i] = ManifestEntry{
+		entries = append(entries, ManifestEntry{
 			HeaderOffset: headerOffset,
 			FileSize:     fileSize,
 			FileType:     fileType,
 			FilePath:     filePath,
-		}
+		})
 	}
 
-	// Read and validate the trailer (4 bytes).
-	if offset+4 > len(buf)-4 {
-		return nil, fmt.Errorf("manifest trailer missing")
+	// Read the trailer (4 bytes), which should match the magic number.
+	trailer := make([]byte, 4)
+	if _, err := io.ReadFull(tr, trailer); err != nil {
+		return nil, fmt.Errorf("error reading manifest trailer: %w", err)
 	}
-	trailer := binary.BigEndian.Uint32(buf[offset : offset+4])
-	offset += 4
-	if trailer != manifestMagicNumber {
-		return nil, fmt.Errorf("invalid manifest trailer: expected 0x%X, got 0x%X", manifestMagicNumber, trailer)
+	trailerValue := binary.BigEndian.Uint32(trailer)
+	if trailerValue != manifestMagicNumber {
+		return nil, fmt.Errorf("invalid manifest trailer: expected 0x%X, got 0x%X", manifestMagicNumber, trailerValue)
 	}
 
-	// Ensure we've consumed all data except the final CRC.
-	if offset != len(buf)-4 {
-		return nil, fmt.Errorf("unexpected extra data in manifest")
+	// Now read the final CRC (4 bytes) directly from the original reader.
+	// We do this directly to avoid including these bytes in the CRC computation.
+	crcBytes := make([]byte, 4)
+	if _, err := io.ReadFull(r, crcBytes); err != nil {
+		return nil, fmt.Errorf("error reading manifest CRC: %w", err)
+	}
+	storedCrc := binary.BigEndian.Uint32(crcBytes)
+	computedCrc := h.Sum32()
+	if storedCrc != computedCrc {
+		return nil, fmt.Errorf("manifest CRC mismatch: expected 0x%X, got 0x%X", storedCrc, computedCrc)
 	}
 
 	fmt.Println("Manifest read successfully.")
