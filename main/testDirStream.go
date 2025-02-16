@@ -9,9 +9,7 @@ import (
 	"path/filepath"
 )
 
-// main provides a command-line interface for encoding and decoding.
 func main() {
-	// Define command-line flags.
 	encodeCmd := flag.NewFlagSet("encode", flag.ExitOnError)
 	encodeSourceDir := encodeCmd.String("source", "", "Source directory to encode (required)")
 	encodeOutputFile := encodeCmd.String("output", "output.stream", "Output file name")
@@ -53,9 +51,7 @@ func main() {
 	}
 }
 
-// encode handles the encoding process.
 func encode(sourceDir, outputFile string) {
-	// Sanitize input
 	sourceDir, err := filepath.Abs(sourceDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Invalid source directory: %v\n", err)
@@ -67,8 +63,10 @@ func encode(sourceDir, outputFile string) {
 		os.Exit(1)
 	}
 
+	files, _ := dirstream.BuildRelativeFileList(sourceDir, nil)
+
 	encoder := dirstream.NewEncoder(sourceDir, dirstream.DefaultChunkSize)
-	stream, err := encoder.Encode()
+	stream, err := encoder.Encode(files)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Encoding error: %v\n", err)
 		os.Exit(1)
@@ -95,7 +93,6 @@ func encode(sourceDir, outputFile string) {
 	fmt.Println("Encoding successful. Output written to", outputFile)
 }
 
-// decode handles the decoding process.
 func decode(inputFile, destDir string, strictMode bool) {
 	inputFile, err := filepath.Abs(inputFile)
 	if err != nil {

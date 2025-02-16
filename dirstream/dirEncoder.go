@@ -6,15 +6,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-// Encoder encodes a file system tree into a single io.Reader stream.
 type Encoder struct {
 	rootPath  string
 	chunkSize int
 }
 
-// NewEncoder creates a new Encoder with a configurable chunk size.
 func NewEncoder(rootPath string, chunkSize int) *Encoder {
 	if chunkSize <= 0 {
 		chunkSize = DefaultChunkSize
@@ -22,87 +21,69 @@ func NewEncoder(rootPath string, chunkSize int) *Encoder {
 	return &Encoder{rootPath: rootPath, chunkSize: chunkSize}
 }
 
-// Encode walks the directory tree and writes file headers and data to a stream.
-func (e *Encoder) Encode() (io.Reader, error) {
+func (e *Encoder) Encode(fileList []string) (io.Reader, error) {
 	r, w := io.Pipe()
-	// Wrap the writer with a counting writer then a buffered writer.
 	cw := &CountingWriter{w: w}
 	bufferedWriter := bufio.NewWriter(cw)
 
-	// In-memory manifest table.
 	var manifestEntries []ManifestEntry
 
 	go func() {
-		// Ensure the buffered writer is flushed and the pipe is closed.
 		defer func() {
-			// Flush any remaining buffered data.
 			bufferedWriter.Flush()
 			w.Close()
 		}()
 
-		err := filepath.WalkDir(e.rootPath, func(path string, d os.DirEntry, err error) error {
+		for _, relPath := range fileList {
+			fullPath := filepath.Join(e.rootPath, relPath)
+
+			info, err := os.Lstat(fullPath)
 			if err != nil {
-				return err
+				w.CloseWithError(err)
+				return
 			}
 
-			// Get the relative path.
-			relPath, err := filepath.Rel(e.rootPath, path)
-			if err != nil {
-				return err
-			}
-
-			// Retrieve file info.
-			info, err := d.Info()
-			if err != nil {
-				return err
-			}
-
-			// Prepare the file header.
 			var fh fileHeader
 			fh.Version = headerVersion
 			fh.FilePath = relPath
 			fh.ModTime = info.ModTime().Unix()
 			fh.FileMode = uint32(info.Mode())
 
-			// Process directories.
-			if d.IsDir() {
+			if info.IsDir() {
 				fh.FileSize = 0
 				fh.FileType = fileTypeDirectory
 				fh.LinkTarget = ""
-			} else if d.Type()&os.ModeSymlink != 0 { // Process symlinks.
-				// Use Lstat to avoid following the symlink.
-				info, err = os.Lstat(path)
+			} else if info.Mode()&os.ModeSymlink != 0 {
+				linkTarget, err := os.Readlink(fullPath)
 				if err != nil {
-					return err
-				}
-				linkTarget, err := os.Readlink(path)
-				if err != nil {
-					return err
+					err := w.CloseWithError(err)
+					if err != nil {
+						return
+					}
+					return
 				}
 				fh.FileSize = 0
 				fh.FileType = fileTypeSymlink
 				fh.LinkTarget = linkTarget
-			} else if info.Mode().IsRegular() { // Process regular files.
+			} else if info.Mode().IsRegular() {
 				fh.FileSize = uint64(info.Size())
 				fh.FileType = fileTypeRegular
 				fh.LinkTarget = ""
 			} else {
-				// Skip non-regular files.
-				return nil
+				continue
 			}
 
-			// Flush the buffer to ensure cw.Count is up-to-date.
 			if err := bufferedWriter.Flush(); err != nil {
-				return err
+				w.CloseWithError(err)
+				return
 			}
-			// Record the current offset as the header start.
 			offset := cw.Count
 
-			// Write the header.
 			if err := writeHeader(bufferedWriter, fh); err != nil {
-				return err
+				w.CloseWithError(err)
+				return
 			}
-			// Add an entry to the manifest.
+
 			manifestEntries = append(manifestEntries, ManifestEntry{
 				HeaderOffset: offset,
 				FileSize:     fh.FileSize,
@@ -110,39 +91,65 @@ func (e *Encoder) Encode() (io.Reader, error) {
 				FilePath:     fh.FilePath,
 			})
 
-			// For regular files, write file data in chunks.
 			if fh.FileType == fileTypeRegular {
-				file, err := os.Open(path)
+				file, err := os.Open(fullPath)
 				if err != nil {
-					return err
+					w.CloseWithError(err)
+					return
 				}
-				defer file.Close()
 
-				// Use the helper function to write file data in chunks.
 				if err := writeChunks(bufferedWriter, file, e.chunkSize); err != nil {
-					return err
+					file.Close()
+					w.CloseWithError(err)
+					return
 				}
+				file.Close()
 				fmt.Printf("Encoded file: %s\n", relPath)
 			} else if fh.FileType == fileTypeDirectory {
 				fmt.Printf("Encoded directory: %s\n", relPath)
 			} else if fh.FileType == fileTypeSymlink {
 				fmt.Printf("Encoded symlink: %s -> %s\n", relPath, fh.LinkTarget)
 			}
-
-			return nil
-		})
-
-		bufferedWriter.Flush()
-
-		// Write the manifest.
-		if err := writeManifest(bufferedWriter, manifestEntries); err != nil {
-			w.CloseWithError(err)
 		}
 
-		if err != nil {
+		if err := bufferedWriter.Flush(); err != nil {
 			w.CloseWithError(err)
+			return
+		}
+
+		if err := writeManifest(bufferedWriter, manifestEntries); err != nil {
+			w.CloseWithError(err)
+			return
 		}
 	}()
 
 	return r, nil
+}
+
+func BuildRelativeFileList(rootPath string, excludes []string) ([]string, error) {
+	var files []string
+
+	err := filepath.WalkDir(rootPath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		for _, exclude := range excludes {
+			if strings.Contains(path, exclude) {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+
+		relPath, err := filepath.Rel(rootPath, path)
+		if err != nil {
+			return err
+		}
+		files = append(files, relPath)
+		return nil
+	})
+
+	return files, err
 }

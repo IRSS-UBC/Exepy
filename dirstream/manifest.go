@@ -8,7 +8,7 @@ import (
 
 // Constants for the manifest.
 const (
-	manifestMagicNumber = 0x4D414E49 // Example: "MANI" in hex.
+	manifestMagicNumber = 0x4D414E49
 	manifestVersion     = 1
 )
 
