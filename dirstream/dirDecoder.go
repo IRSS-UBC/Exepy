@@ -76,8 +76,13 @@ func (d *Decoder) Decode(r io.Reader) error {
 			println("End of stream detected. Exiting...")
 
 			// Read and process the manifest.
-			if err := readManifest(bufferedReader); err != nil {
+			entries, err := readManifest(bufferedReader)
+			if err != nil {
 				return fmt.Errorf("Decode: error reading manifest: %v", err)
+			}
+
+			for _, entry := range entries {
+				fmt.Printf("Entry: %v\n", entry)
 			}
 
 			break // Stop decoding after the manifest.
