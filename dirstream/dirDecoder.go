@@ -98,7 +98,10 @@ func (d *Decoder) Decode(r io.Reader) error {
 			return fmt.Errorf("Decode: error reading header: %v", err)
 		}
 
-		fullPath := filepath.Join(d.destPath, fh.FilePath)
+		fullPath, err := sanitizePath(d.destPath, fh.FilePath)
+		if err != nil {
+			return fmt.Errorf("Decode: invalid file path: %v", err)
+		}
 		dir := filepath.Dir(fullPath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("Decode: error creating directory %s: %v", dir, err)
@@ -112,7 +115,19 @@ func (d *Decoder) Decode(r io.Reader) error {
 			fmt.Printf("Decoded directory: %s\n", fullPath)
 			continue
 		case fileTypeSymlink:
-			os.Remove(fullPath)
+			if fileInfo, err := os.Lstat(fullPath); err == nil { // Check if file exists
+				if fileInfo.Mode()&os.ModeSymlink != 0 { // Check if its a symlink
+					if err := os.Remove(fullPath); err != nil { // Remove *only* if its a symlink.
+						return fmt.Errorf("failed to remove existing symlink %s: %v", fullPath, err)
+					}
+				} else {
+					// Handle the case where a non-symlink file exists
+					return fmt.Errorf("Decode: file already exist and is not symlink: %s", fullPath)
+				}
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("Decode: failed to stat file %s: %v", fullPath, err)
+			}
+
 			if err := os.Symlink(fh.LinkTarget, fullPath); err != nil {
 				return fmt.Errorf("Decode: error creating symlink %s -> %s: %v", fullPath, fh.LinkTarget, err)
 			}

@@ -30,6 +30,7 @@ type fileHeader struct {
 
 // writeHeader builds a variable-length header, appends a 4-byte CRC, and writes it.
 func writeHeader(w io.Writer, fh fileHeader) error {
+
 	var buf bytes.Buffer
 
 	// Write fixed fields: magic (4 bytes) and version (4 bytes).
@@ -49,6 +50,11 @@ func writeHeader(w io.Writer, fh fileHeader) error {
 	// Write file path.
 	filePathBytes := []byte(fh.FilePath)
 	filePathLen := uint16(len(filePathBytes))
+
+	if filePathLen > 4096 {
+		return fmt.Errorf("file path too long: %d", filePathLen)
+	}
+
 	if err := binary.Write(&buf, binary.BigEndian, filePathLen); err != nil {
 		return err
 	}
@@ -73,6 +79,11 @@ func writeHeader(w io.Writer, fh fileHeader) error {
 	if fh.FileType == fileTypeSymlink {
 		linkTargetBytes := []byte(fh.LinkTarget)
 		linkTargetLen := uint16(len(linkTargetBytes))
+
+		if linkTargetLen > 4096 {
+			return fmt.Errorf("Sys-link target too long: %d", linkTargetLen)
+		}
+
 		if err := binary.Write(&buf, binary.BigEndian, linkTargetLen); err != nil {
 			return err
 		}

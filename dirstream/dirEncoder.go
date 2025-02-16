@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 type Encoder struct {
@@ -18,6 +17,18 @@ func NewEncoder(rootPath string, chunkSize int) *Encoder {
 	if chunkSize <= 0 {
 		chunkSize = DefaultChunkSize
 	}
+
+	fi, err := os.Stat(rootPath)
+	if err != nil {
+		panic(fmt.Sprintf("Invalid rootPath: %v", err)) // Or return nil and error
+	}
+	if !fi.IsDir() {
+		panic(fmt.Sprintf("Invalid rootPath: not a directory: %s", rootPath))
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		panic(fmt.Sprintf("Invalid rootPath: is a symlink %s", rootPath))
+	}
+
 	return &Encoder{rootPath: rootPath, chunkSize: chunkSize}
 }
 
@@ -124,32 +135,4 @@ func (e *Encoder) Encode(fileList []string) (io.Reader, error) {
 	}()
 
 	return r, nil
-}
-
-func BuildRelativeFileList(rootPath string, excludes []string) ([]string, error) {
-	var files []string
-
-	err := filepath.WalkDir(rootPath, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		for _, exclude := range excludes {
-			if strings.Contains(path, exclude) {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-		}
-
-		relPath, err := filepath.Rel(rootPath, path)
-		if err != nil {
-			return err
-		}
-		files = append(files, relPath)
-		return nil
-	})
-
-	return files, err
 }
