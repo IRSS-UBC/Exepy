@@ -16,7 +16,7 @@ import (
 //go:embed run.bat
 var runScript string
 
-func bootstrap(pure bool) {
+func bootstrap() {
 
 	exit := ValidateExecutableHash()
 	if exit {
@@ -173,8 +173,8 @@ func bootstrap(pure bool) {
 			fmt.Println(" - " + file)
 		}
 
-		if pure {
-			fmt.Println("Please re-run the installer.")
+		if settings.RunAfterInstall == false {
+			fmt.Println("Please re-run the installer to re-install me.")
 			os.Remove("bootstrapped")
 
 			// quit the program with an error code
@@ -207,12 +207,7 @@ func bootstrap(pure bool) {
 			return
 		}
 
-		// run the payload script
-		if pure {
-			fmt.Println("Please run the following command in the command line to run the script:")
-			fmt.Println(runBatPath)
-		} else {
-
+		if settings.RunAfterInstall {
 			fmt.Println("Running script...")
 
 			if err := common.RunCommand(runBatPath, os.Args[1:]); err != nil {
@@ -221,6 +216,9 @@ func bootstrap(pure bool) {
 			}
 
 			fmt.Println("Script completed.")
+		} else {
+			fmt.Println("Please run the following command in the command line to run the script:")
+			fmt.Println(runBatPath)
 		}
 
 	}

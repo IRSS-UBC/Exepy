@@ -20,6 +20,7 @@ type PythonSetupSettings struct {
 	SetupScript           string   `json:"setupScript"`
 	MainScript            string   `json:"mainScript"`
 	FilesToCopyToRoot     []string `json:"filesToCopyToRoot"`
+	RunAfterInstall       bool     `json:"runAfterInstall"`
 }
 
 func loadSettings(filename string) (*PythonSetupSettings, error) {
@@ -38,6 +39,8 @@ func loadSettings(filename string) (*PythonSetupSettings, error) {
 }
 
 func saveSettings(filename string, settings *PythonSetupSettings) error {
+	// check if the file exists
+
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return err
@@ -62,11 +65,12 @@ func LoadOrSaveDefault(filename string) (*PythonSetupSettings, error) {
 			ScriptExtractDir:      "scripts",
 			PthFile:               "python311._pth",
 			PythonInteriorZip:     "python311.zip",
-			InstallerRequirements: "requirements.txt",
+			InstallerRequirements: "",
 			RequirementsFile:      "requirements.txt",
 			ScriptDir:             "scripts",
 			MainScript:            "main.py",
 			FilesToCopyToRoot:     []string{"requirements.txt", "readme.md", "license.md"},
+			RunAfterInstall:       false,
 		}
 
 		err = saveSettings(filename, settings)

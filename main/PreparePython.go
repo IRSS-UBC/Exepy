@@ -40,10 +40,6 @@ func PreparePython(settings common.PythonSetupSettings) (io.ReadSeeker, io.ReadS
 
 	common.RemoveIfExists(settings.PythonDownloadZip)
 
-	originRequirements := filepath.Join(settings.ScriptDir, settings.RequirementsFile)
-	destRequirements := filepath.Join(settings.PythonExtractDir, settings.RequirementsFile)
-	common.CopyFile(originRequirements, destRequirements)
-
 	pythonStream, err := common.DirToStream(settings.PythonExtractDir, []string{})
 
 	if err != nil {
@@ -55,16 +51,14 @@ func PreparePython(settings common.PythonSetupSettings) (io.ReadSeeker, io.ReadS
 	os.Mkdir(wheelsPath, os.ModePerm)
 
 	if settings.InstallerRequirements != "" {
-
 		if common.DoesPathExist(settings.InstallerRequirements) {
-			fmt.Println("Requirements file found:", settings.InstallerRequirements)
+			fmt.Println("Installer requirements file found:", settings.InstallerRequirements)
 			if err := buildRequirementWheels(settings.PythonExtractDir, settings.InstallerRequirements, wheelsPath); err != nil {
 				return nil, nil, err
 			}
 		} else {
-			fmt.Println("Requirements file not found but is specified in configuration:", settings.InstallerRequirements)
+			fmt.Println("Installer requirements file not found but is specified in configuration:", settings.InstallerRequirements)
 		}
-
 	}
 
 	wheelsStream, _ := common.DirToStream(wheelsPath, []string{})
