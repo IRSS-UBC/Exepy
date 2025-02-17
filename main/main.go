@@ -21,6 +21,12 @@ func main() {
 		fmt.Println("Project not embedded. Running in creator mode.")
 		createInstaller()
 	}
+
+	if isLaunchedFromExplorer() {
+		fmt.Print("Press any key to continue...")
+		var input string
+		fmt.Scanln(&input)
+	}
 }
 
 func checkIfEmbedded() (bool, error) {

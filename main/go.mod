@@ -10,6 +10,9 @@ require lukasolson.net/common v0.0.0-00010101000000-000000000000
 
 require github.com/maja42/ember v1.2.0
 
-require github.com/stretchr/testify v1.9.0 // indirect
+require (
+	github.com/stretchr/testify v1.9.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+)
 
 replace github.com/maja42/ember => github.com/lukasgolson/ember v0.0.0-20240222203012-16dfde8ef5de
