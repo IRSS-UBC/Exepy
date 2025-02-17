@@ -5,7 +5,7 @@ import (
 	"errors"
 )
 
-// removeSignature zeros out the security directory and checksum in a PE file.
+// RemoveSignature zeros out the security directory and checksum in a PE file.
 func RemoveSignature(peBytes []byte) ([]byte, error) {
 	// A valid DOS header is at least 64 bytes.
 	if len(peBytes) < 64 {

@@ -44,6 +44,9 @@ func bootstrap() {
 	}
 
 	// check if the bootstrap has already been run
+	scriptExtractDir := *settings.ScriptExtractDir
+
+	pythonExtractDir := *settings.PythonExtractDir
 	if _, err := os.Stat("bootstrapped"); os.IsNotExist(err) {
 		// if the bootstrap has not been run, extract the Python and program files
 
@@ -69,19 +72,19 @@ func bootstrap() {
 			return
 		}
 
-		err = common.StreamToDir(PythonReader, settings.PythonExtractDir)
+		err = common.StreamToDir(PythonReader, pythonExtractDir)
 		if err != nil {
 			fmt.Println("Error extracting Python zip file:", err)
 			return
 		}
 
-		err = common.StreamToDir(PayloadReader, settings.ScriptExtractDir)
+		err = common.StreamToDir(PayloadReader, scriptExtractDir)
 		if err != nil {
 			fmt.Println("Error extracting payload zip file:", err)
 			return
 		}
 
-		wheelsDir := path.Join(settings.PythonExtractDir, common.WheelsFilename)
+		wheelsDir := path.Join(pythonExtractDir, common.WheelsFilename)
 
 		err = common.StreamToDir(wheelsReader, wheelsDir)
 		if err != nil {
@@ -89,27 +92,30 @@ func bootstrap() {
 			return
 		}
 
-		pythonPath := filepath.Join(settings.PythonExtractDir, "python.exe")
+		pythonPath := filepath.Join(pythonExtractDir, "python.exe")
 
-		if err := common.RunCommand(pythonPath, []string{common.GetPipName(settings.PythonExtractDir), "install", "pip", "setuptools", "wheel"}); err != nil {
+		if err := common.RunCommand(pythonPath, []string{common.GetPipName(pythonExtractDir), "install", "pip", "setuptools", "wheel"}); err != nil {
 			fmt.Println("Error building wheels:", err)
 			return
 		}
 
 		// if requirements.txt exists, install the requirements
-		if _, err := os.Stat(settings.RequirementsFile); err == nil {
-			if err := common.RunCommand(pythonPath, []string{common.GetPipName(settings.PythonExtractDir), "install", "--find-links", path.Join(wheelsDir) + "/", "--only-binary=:all:", "-r", settings.RequirementsFile}); err != nil {
+		requirementsFile := *settings.RequirementsFile
+		if _, err := os.Stat(requirementsFile); err == nil {
+			if err := common.RunCommand(pythonPath, []string{common.GetPipName(pythonExtractDir), "install", "--find-links",
+				path.Join(wheelsDir) + "/", "--only-binary=:all:", "-r", requirementsFile}); err != nil {
 				fmt.Println("Error while installing requirements from disk... Continuing...", err)
 			}
 		}
 
 		// setup script path is relative to the extracted script directory
-		setupScriptPath := path.Join(settings.ScriptExtractDir, settings.SetupScript)
+		setupScriptName := *settings.SetupScript
 
 		// run the setup.py file if configured
-		if settings.SetupScript != "" {
+		if setupScriptName != "" {
+			setupScriptPath := path.Join(scriptExtractDir, setupScriptName)
 			if err := common.RunCommand(pythonPath, []string{setupScriptPath}); err != nil {
-				fmt.Println("Error running "+settings.SetupScript+":", err)
+				fmt.Println("Error running "+setupScriptName+":", err)
 				return
 			}
 		}
@@ -125,7 +131,7 @@ func bootstrap() {
 
 	// Copy the files to the root directory if they are listed in the settings and they exist
 	for _, file := range settings.FilesToCopyToRoot {
-		filePath := path.Join(settings.ScriptExtractDir, file)
+		filePath := path.Join(scriptExtractDir, file)
 		if common.DoesPathExist(filePath) {
 			err = common.CopyFile(filePath, file)
 			if err != nil {
@@ -158,23 +164,23 @@ func bootstrap() {
 	}
 
 	// get the hashes of the extracted files
-	tampered, err := common.VerifyDirectoryHashes(settings.ScriptExtractDir, fileHashes)
+	tamperedFiles, err := common.VerifyDirectoryIntegrity(scriptExtractDir, fileHashes)
 
 	if err != nil {
 		panic(err)
 	}
 
-	if len(tampered) > 0 {
+	if len(tamperedFiles) > 0 {
 
 		fmt.Println("Error validating integrity of extracted files.")
 		fmt.Println("Warning, the following files have been modified since installation:")
 
-		for _, file := range tampered {
+		for _, file := range tamperedFiles {
 			fmt.Println(" - " + file)
 		}
 
-		if settings.RunAfterInstall == false {
-			fmt.Println("Please re-run the installer to re-install me.")
+		if *settings.RunAfterInstall == false {
+			fmt.Println("Please rerun the installer to reinstall the environment.")
 			os.Remove("bootstrapped")
 
 			// quit the program with an error code
@@ -185,19 +191,19 @@ func bootstrap() {
 	}
 
 	// if main script is not set, exit, as there is nothing to run
-	if settings.MainScript == "" {
+	if *settings.MainScript == "" {
 		fmt.Println("Files installed successfully. Exiting.")
 		return
 	} else {
 
 		// Create the run.bat
-		pythonExecutable := filepath.Join(settings.PythonExtractDir, "python.exe")
-		mainScriptPath := path.Join(settings.ScriptExtractDir, settings.MainScript)
+		pythonExecutable := filepath.Join(pythonExtractDir, "python.exe")
+		mainScriptPath := path.Join(scriptExtractDir, *settings.MainScript)
 
 		// replace the placeholders in the runscript with the actual values
 		runScript = strings.ReplaceAll(runScript, "{{PYTHON_EXE}}", pythonExecutable)
 		runScript = strings.ReplaceAll(runScript, "{{MAIN_SCRIPT}}", mainScriptPath)
-		runScript = strings.ReplaceAll(runScript, "{{SCRIPTS_DIR}}", settings.ScriptExtractDir)
+		runScript = strings.ReplaceAll(runScript, "{{SCRIPTS_DIR}}", scriptExtractDir)
 
 		err = os.WriteFile("run.bat", []byte(runScript), 0644)
 
@@ -207,7 +213,7 @@ func bootstrap() {
 			return
 		}
 
-		if settings.RunAfterInstall {
+		if *settings.RunAfterInstall {
 			fmt.Println("Running script...")
 
 			if err := common.RunCommand(runBatPath, os.Args[1:]); err != nil {

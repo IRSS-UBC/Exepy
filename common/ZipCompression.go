@@ -16,16 +16,16 @@ func ExtractZip(zipFile, extractDir string, skipLevels int) error {
 	defer r.Close()
 
 	for _, file := range r.File {
-		// Split the file's path into components
 		components := strings.Split(file.Name, "/")
 
-		// Skip the first n levels
 		if len(components) > skipLevels {
 			relativePath := strings.Join(components[skipLevels:], "/")
 			path := filepath.Join(extractDir, relativePath)
 
 			if file.FileInfo().IsDir() {
-				os.MkdirAll(path, os.ModePerm)
+				if err := os.MkdirAll(path, os.ModePerm); err != nil {
+					return err
+				}
 				continue
 			}
 
@@ -33,24 +33,29 @@ func ExtractZip(zipFile, extractDir string, skipLevels int) error {
 				return err
 			}
 
-			outFile, err := os.Create(path)
-			if err != nil {
-				return err
-			}
-			defer outFile.Close()
-
-			rc, err := file.Open()
-			if err != nil {
-				return err
-			}
-			defer rc.Close()
-
-			_, err = io.Copy(outFile, rc)
-			if err != nil {
+			if err := extractFile(file, path); err != nil {
 				return err
 			}
 		}
 	}
+	return nil
+}
 
+func extractFile(file *zip.File, path string) error {
+	outFile, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+
+	rc, err := file.Open()
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	if _, err := io.Copy(outFile, rc); err != nil {
+		return err
+	}
 	return nil
 }

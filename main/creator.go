@@ -19,14 +19,15 @@ func createInstaller() {
 
 	settings, err := common.LoadOrSaveDefault(settingsFileName)
 	if err != nil {
-		return
+		fmt.Println("Error loading or saving settings file:", err.Error())
+		os.Exit(1)
 	}
 
-	pythonScriptPath := path.Join(settings.ScriptDir, settings.MainScript)
-	requirementsPath := path.Join(settings.ScriptDir, settings.RequirementsFile)
+	pythonScriptPath := path.Join(*settings.ScriptDir, *settings.MainScript)
+	requirementsPath := path.Join(*settings.ScriptDir, *settings.RequirementsFile)
 
 	// check if payload directory exists
-	if !common.DoesPathExist(settings.ScriptDir) {
+	if !common.DoesPathExist(*settings.ScriptDir) {
 		println("Scripts directory does not exist: ", settings.ScriptDir)
 		return
 	}
@@ -38,7 +39,7 @@ func createInstaller() {
 	}
 
 	// if requirements file is listed, check that it exists
-	if settings.RequirementsFile != "" {
+	if *settings.RequirementsFile != "" {
 		if !common.DoesPathExist(requirementsPath) {
 			println("Requirements file is listed in config but does not exist: ", requirementsPath)
 			return
@@ -59,7 +60,7 @@ func createInstaller() {
 
 	ignoredDirs := []string{"__pycache__", ".git", ".idea", ".vscode"}
 
-	PayloadHashes, err := common.ComputeDirectoryHashes(settings.ScriptDir, ignoredDirs)
+	PayloadHashes, err := common.ComputeDirectoryHashes(*settings.ScriptDir, ignoredDirs)
 	if err != nil {
 		panic(err)
 	}
@@ -70,7 +71,7 @@ func createInstaller() {
 		panic(err)
 	}
 
-	PayloadFile, err := common.DirToStream(settings.ScriptDir, ignoredDirs)
+	PayloadFile, err := common.DirToStream(*settings.ScriptDir, ignoredDirs)
 	if err != nil {
 		panic(err)
 	}

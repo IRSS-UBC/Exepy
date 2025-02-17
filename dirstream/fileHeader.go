@@ -37,7 +37,7 @@ func writeHeader(w io.Writer, fh fileHeader) error {
 	if err := binary.Write(&buf, binary.BigEndian, uint32(fileHeaderMagicNumber)); err != nil {
 		return err
 	}
-	if err := binary.Write(&buf, binary.BigEndian, uint32(fh.Version)); err != nil {
+	if err := binary.Write(&buf, binary.BigEndian, fh.Version); err != nil {
 		return err
 	}
 

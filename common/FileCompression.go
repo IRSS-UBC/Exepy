@@ -52,13 +52,3 @@ func StreamToDir(IOReader io.Reader, outputDir string) error {
 
 	return nil
 }
-
-func WrapReaderAsReadSeeker(r io.Reader) (io.ReadSeeker, error) {
-	// Read the entire data from the reader into memory.
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read from reader: %w", err)
-	}
-	// Wrap the data in a bytes.Reader, which implements io.ReadSeeker.
-	return bytes.NewReader(data), nil
-}

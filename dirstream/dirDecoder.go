@@ -116,8 +116,8 @@ func (d *Decoder) Decode(r io.Reader) error {
 			continue
 		case fileTypeSymlink:
 			if fileInfo, err := os.Lstat(fullPath); err == nil { // Check if file exists
-				if fileInfo.Mode()&os.ModeSymlink != 0 { // Check if its a symlink
-					if err := os.Remove(fullPath); err != nil { // Remove *only* if its a symlink.
+				if fileInfo.Mode()&os.ModeSymlink != 0 { // Check if it's a symlink
+					if err := os.Remove(fullPath); err != nil { // Remove *only* if it's a symlink.
 						return fmt.Errorf("failed to remove existing symlink %s: %v", fullPath, err)
 					}
 				} else {

@@ -14,7 +14,7 @@ type FileHash struct {
 	Hash         string `json:"hash"`
 }
 
-// https://stackoverflow.com/a/40436529 CC BY-SA 4.0
+// Md5SumFile https://stackoverflow.com/a/40436529 CC BY-SA 4.0
 func Md5SumFile(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -87,7 +87,7 @@ func ComputeDirectoryHashes(dirPath string, ignoredDirs []string) ([]FileHash, e
 	return fileHashes, nil
 }
 
-func VerifyDirectoryHashes(dirPath string, fileHashes []FileHash) ([]string, error) {
+func VerifyDirectoryIntegrity(dirPath string, fileHashes []FileHash) ([]string, error) {
 	var mismatched []string
 
 	for _, fh := range fileHashes {

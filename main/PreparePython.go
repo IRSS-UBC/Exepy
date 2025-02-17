@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
-	common "lukasolson.net/common"
+	"lukasolson.net/common"
 	"os"
 	"path/filepath"
 )
@@ -15,45 +15,45 @@ func PreparePython(settings common.PythonSetupSettings) (io.ReadSeeker, io.ReadS
 	defer cleanDirectory(&settings)
 
 	// CREATE THE EXTRACTION DIRECTORY
-	common.RemoveIfExists(settings.PythonExtractDir)
-	if err := os.Mkdir(settings.PythonExtractDir, os.ModePerm); err != nil {
+	common.RemoveIfExists(*settings.PythonExtractDir)
+	if err := os.Mkdir(*settings.PythonExtractDir, os.ModePerm); err != nil {
 		fmt.Println("Error creating extraction directory:", err)
 		return nil, nil, err
 	}
 
 	// DOWNLOAD PYTHON ZIP FILE
-	if err := common.DownloadFile(settings.PythonDownloadURL, settings.PythonDownloadZip); err != nil {
+	if err := common.DownloadFile(*settings.PythonDownloadURL, *settings.PythonDownloadZip); err != nil {
 		fmt.Println("Error downloading Python zip file:", err)
 		return nil, nil, err
 	}
 
 	// DOWNLOAD PIP FILE
-	if err := common.DownloadFile(settings.PipDownloadURL, common.GetPipName(settings.PythonExtractDir)); err != nil {
+	if err := common.DownloadFile(*settings.PipDownloadURL, common.GetPipName(*settings.PythonExtractDir)); err != nil {
 		fmt.Println("Error downloading pip module:", err)
 		return nil, nil, err
 	}
 
-	if err := createBasePythonInstallation(&settings, settings.PythonDownloadZip); err != nil {
+	if err := createBasePythonInstallation(&settings, *settings.PythonDownloadZip); err != nil {
 		fmt.Println("Error creating base Python installation:", err)
 		return nil, nil, err
 	}
 
-	common.RemoveIfExists(settings.PythonDownloadZip)
+	common.RemoveIfExists(*settings.PythonDownloadZip)
 
-	pythonStream, err := common.DirToStream(settings.PythonExtractDir, []string{})
+	pythonStream, err := common.DirToStream(*settings.PythonExtractDir, []string{})
 
 	if err != nil {
 		fmt.Println("Error zipping Python directory:", err)
 		return nil, nil, err
 	}
 
-	wheelsPath := filepath.Join(settings.PythonExtractDir, "wheels")
+	wheelsPath := filepath.Join(*settings.PythonExtractDir, "wheels")
 	os.Mkdir(wheelsPath, os.ModePerm)
 
-	if settings.InstallerRequirements != "" {
-		if common.DoesPathExist(settings.InstallerRequirements) {
+	if *settings.InstallerRequirements != "" {
+		if common.DoesPathExist(*settings.InstallerRequirements) {
 			fmt.Println("Installer requirements file found:", settings.InstallerRequirements)
-			if err := buildRequirementWheels(settings.PythonExtractDir, settings.InstallerRequirements, wheelsPath); err != nil {
+			if err := buildRequirementWheels(*settings.PythonExtractDir, *settings.InstallerRequirements, wheelsPath); err != nil {
 				return nil, nil, err
 			}
 		} else {
@@ -68,7 +68,7 @@ func PreparePython(settings common.PythonSetupSettings) (io.ReadSeeker, io.ReadS
 
 func createBasePythonInstallation(settings *common.PythonSetupSettings, pythonZip string) error {
 	// EXTRACT THE Python ZIP FILE
-	if err := common.ExtractZip(pythonZip, settings.PythonExtractDir, 0); err != nil {
+	if err := common.ExtractZip(pythonZip, *settings.PythonExtractDir, 0); err != nil {
 		fmt.Println("Error extracting Python zip file:", err)
 		return err
 	}
@@ -87,7 +87,7 @@ func createBasePythonInstallation(settings *common.PythonSetupSettings, pythonZi
 	}
 
 	// make empty DLLs folder
-	if err := os.Mkdir(filepath.Join(settings.PythonExtractDir, "DLLs"), os.ModePerm); err != nil {
+	if err := os.Mkdir(filepath.Join(*settings.PythonExtractDir, "DLLs"), os.ModePerm); err != nil {
 		fmt.Println("Error creating DLLs folder:", err)
 		return err
 	}
@@ -98,17 +98,17 @@ func createBasePythonInstallation(settings *common.PythonSetupSettings, pythonZi
 func extractInteriorPythonArchive(settings *common.PythonSetupSettings) error {
 	// EXTRACT THE EMBEDDED PYTHON INTERIOR ZIP FILE
 
-	if err := common.ExtractZip(filepath.Join(settings.PythonExtractDir, settings.PythonInteriorZip), settings.PythonExtractDir, 0); err != nil {
+	if err := common.ExtractZip(filepath.Join(*settings.PythonExtractDir, *settings.PythonInteriorZip), *settings.PythonExtractDir, 0); err != nil {
 		fmt.Println("Error extracting the interiorPython zip file:", err)
 		return err
 	}
 
-	common.RemoveIfExists(filepath.Join(settings.PythonExtractDir, settings.PythonInteriorZip))
+	common.RemoveIfExists(filepath.Join(*settings.PythonExtractDir, *settings.PythonInteriorZip))
 	return nil
 }
 
 func createSiteCustomFile(settings *common.PythonSetupSettings) error {
-	sitecustomizeFile, err := os.Create(filepath.Join(settings.PythonExtractDir, "sitecustomize.py"))
+	sitecustomizeFile, err := os.Create(filepath.Join(*settings.PythonExtractDir, "sitecustomize.py"))
 
 	if err != nil {
 		return err
@@ -124,17 +124,17 @@ func createSiteCustomFile(settings *common.PythonSetupSettings) error {
 }
 
 func updatePTHFile(settings *common.PythonSetupSettings) error {
-	common.RemoveIfExists(filepath.Join(settings.PythonExtractDir, settings.PthFile))
+	common.RemoveIfExists(filepath.Join(*settings.PythonExtractDir, *settings.PthFile))
 
 	// write to ._pth file
-	pthFile, err := os.Create(filepath.Join(settings.PythonExtractDir, settings.PthFile))
+	pthFile, err := os.Create(filepath.Join(*settings.PythonExtractDir, *settings.PthFile))
 	if err != nil {
 		fmt.Println("Error creating ._pth file:", err)
 		return nil
 	}
 
 	// change python311 to pythonExtractDir
-	_, err = pthFile.WriteString(".\\" + settings.PythonExtractDir + "\n.\\Scripts\n.\n.\\Lib\\site-packages\nimport site")
+	_, err = pthFile.WriteString(".\\" + *settings.PythonExtractDir + "\n.\\Scripts\n.\n.\\Lib\\site-packages\nimport site")
 	if err != nil {
 		fmt.Println("Error writing to ._pth file:", err)
 		return nil
@@ -160,8 +160,8 @@ func buildRequirementWheels(extractDir, requirementsFile, wheelDir string) error
 }
 
 func cleanDirectory(settings *common.PythonSetupSettings) {
-	common.RemoveIfExists(settings.PythonExtractDir)
-	common.RemoveIfExists(settings.PythonDownloadZip)
+	common.RemoveIfExists(*settings.PythonExtractDir)
+	common.RemoveIfExists(*settings.PythonDownloadZip)
 
 	println("Directory cleaned")
 }
