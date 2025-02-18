@@ -16,87 +16,118 @@ import (
 //go:embed run.bat
 var runScript string
 
-func bootstrap() {
+func bootstrap() error {
 
 	exit := ValidateExecutableHash()
 	if exit {
-		return
+		return fmt.Errorf("error validating executable hash")
 	}
 
 	attachments, err := ember.Open()
 	if err != nil {
-		fmt.Println("Error opening attachments:", err)
-		return
+		return err
 	}
 	defer attachments.Close()
 
 	if ValidateHashes(attachments) {
 		fmt.Println("Self-integrity validated successfully.")
 	} else {
-		fmt.Println("Error validating hashes.")
-		return
+		return fmt.Errorf("error validating hashes")
 	}
 
 	settings, err := GetSettings(attachments)
 	if err != nil {
-		fmt.Println("Error reading settings:", err)
-		return
+		return err
 	}
 
 	// check if the bootstrap has already been run
 	scriptExtractDir := *settings.ScriptExtractDir
 
 	pythonExtractDir := *settings.PythonExtractDir
+
+	integrityChecked := false
+
 	if _, err := os.Stat("bootstrapped"); os.IsNotExist(err) {
 		// if the bootstrap has not been run, extract the Python and program files
 
 		fmt.Println("Performing first time setup...")
 
+		fmt.Println("Reading embedded files...")
+
 		PythonReader := attachments.Reader(common.PythonFilename)
 
 		if PythonReader == nil {
-			fmt.Println("Error reading Python. Ensure it is embedded in the binary.")
-			return
+			return fmt.Errorf("error reading Python. Ensure it is embedded in the binary")
 		}
 
 		PayloadReader := attachments.Reader(common.PayloadFilename)
 
 		if PayloadReader == nil {
-			fmt.Println("Error reading payload. Ensure it is embedded in the binary.")
-			return
+			return fmt.Errorf("error reading payload. Ensure it is embedded in the binary")
 		}
 
 		wheelsReader := attachments.Reader(common.WheelsFilename)
 		if wheelsReader == nil {
-			fmt.Println("Error reading wheels. Ensure it is embedded in the binary.")
-			return
+			return fmt.Errorf("error reading wheels. Ensure it is embedded in the binary")
 		}
+
+		// extract the files to the disk
+		fmt.Println("Extracting Python redistributable...")
 
 		err = common.StreamToDir(PythonReader, pythonExtractDir)
 		if err != nil {
-			fmt.Println("Error extracting Python zip file:", err)
-			return
+			println("error extracting Python zip file")
+			return err
 		}
 
+		fmt.Println("Extracting Scripts...")
 		err = common.StreamToDir(PayloadReader, scriptExtractDir)
 		if err != nil {
-			fmt.Println("Error extracting payload zip file:", err)
-			return
+			println("error extracting payload zip file")
+			return err
 		}
+
+		fmt.Println("Extracting Wheels...")
 
 		wheelsDir := path.Join(pythonExtractDir, common.WheelsFilename)
-
 		err = common.StreamToDir(wheelsReader, wheelsDir)
 		if err != nil {
-			fmt.Println("Error extracting wheels zip file:", err)
-			return
+			println("error extracting wheels zip file")
+			return err
 		}
 
-		pythonPath := filepath.Join(pythonExtractDir, "python.exe")
+		fmt.Println("Extracted files successfully.")
 
+		// Validate the integrity of the extracted files
+		EmbeddedIntegrityHashes := attachments.Reader(common.IntegrityFilename)
+		if EmbeddedIntegrityHashes == nil {
+			panic("Error reading integrity hashes. Ensure they are embedded in the binary.")
+		}
+
+		integrityData, err := io.ReadAll(EmbeddedIntegrityHashes)
+		if err != nil {
+			panic("Error reading data from reader: " + err.Error())
+		}
+
+		err, isIntegral := VerifyExtractionIntegrity(integrityData, scriptExtractDir)
+
+		if isIntegral != true {
+			fmt.Println("Error validating integrity of extracted files. Please try again or contact the distributor.")
+
+			// quit the program with an error code
+			return fmt.Errorf("file integrity check failed")
+		}
+
+		integrityChecked = true
+
+		// install the required packages
+
+		fmt.Println("Installing required packages...")
+
+		pythonPath := filepath.Join(pythonExtractDir, "python.exe")
 		if err := common.RunCommand(pythonPath, []string{common.GetPipName(pythonExtractDir), "install", "pip", "setuptools", "wheel"}); err != nil {
-			fmt.Println("Error building wheels:", err)
-			return
+			fmt.Println("Error installing packages")
+			return err
 		}
 
 		// if requirements.txt exists, install the requirements
@@ -104,7 +135,7 @@ func bootstrap() {
 		if _, err := os.Stat(requirementsFile); err == nil {
 			if err := common.RunCommand(pythonPath, []string{common.GetPipName(pythonExtractDir), "install", "--find-links",
 				path.Join(wheelsDir) + "/", "--only-binary=:all:", "-r", requirementsFile}); err != nil {
-				fmt.Println("Error while installing requirements from disk... Continuing...", err)
+				fmt.Println("Error while installing requirements from disk... ")
 			}
 		}
 
@@ -116,7 +147,7 @@ func bootstrap() {
 			setupScriptPath := path.Join(scriptExtractDir, setupScriptName)
 			if err := common.RunCommand(pythonPath, []string{setupScriptPath}); err != nil {
 				fmt.Println("Error running "+setupScriptName+":", err)
-				return
+				return err
 			}
 		}
 
@@ -135,32 +166,87 @@ func bootstrap() {
 		if common.DoesPathExist(filePath) {
 			err = common.CopyFile(filePath, file)
 			if err != nil {
-				fmt.Println("Error copying file to root:", err)
-				return
+				fmt.Println("Error copying file to root")
+				return err
 			}
 		}
 	}
 
-	// Validate the integrity of the extracted files
-	EmbeddedIntegrityHashes := attachments.Reader(common.IntegrityFilename)
+	if integrityChecked != true {
+		// Validate the integrity of the extracted files
+		EmbeddedIntegrityHashes := attachments.Reader(common.IntegrityFilename)
+		if EmbeddedIntegrityHashes == nil {
+			panic("Error reading integrity hashes. Ensure they are embedded in the binary.")
+		}
 
-	if EmbeddedIntegrityHashes == nil {
-		panic("Error reading integrity hashes. Ensure they are embedded in the binary.")
+		integrityData, err := io.ReadAll(EmbeddedIntegrityHashes)
+		if err != nil {
+			panic("Error reading data from reader: " + err.Error())
+		}
+
+		err, isIntegral := VerifyExtractionIntegrity(integrityData, scriptExtractDir)
+
+		if *settings.RunAfterInstall == false && isIntegral != true {
+			fmt.Println("Please rerun the installer to reinstall the environment.")
+			os.Remove("bootstrapped")
+
+			// quit the program with an error code
+			return fmt.Errorf("file integrity check failed")
+		}
 	}
 
-	integrityData, err := io.ReadAll(EmbeddedIntegrityHashes)
-	if err != nil {
-		panic("Error reading data from reader: " + err.Error())
+	// if main script is not set, exit, as there is nothing to run
+	if *settings.MainScript == "" {
+		fmt.Println("Files installed successfully. Exiting.")
+		return nil
+	} else {
+
+		// Create the run.bat
+		pythonExecutable := filepath.Join(pythonExtractDir, "python.exe")
+		mainScriptPath := path.Join(scriptExtractDir, *settings.MainScript)
+
+		// replace the placeholders in the runscript with the actual values
+		runScript = strings.ReplaceAll(runScript, "{{PYTHON_EXE}}", pythonExecutable)
+		runScript = strings.ReplaceAll(runScript, "{{MAIN_SCRIPT}}", mainScriptPath)
+		runScript = strings.ReplaceAll(runScript, "{{SCRIPTS_DIR}}", scriptExtractDir)
+
+		err = os.WriteFile("run.bat", []byte(runScript), 0644)
+
+		runBatPath, err := filepath.Abs("run.bat")
+		if err != nil {
+			fmt.Println("Error getting absolute path for run.bat")
+			return err
+		}
+
+		if *settings.RunAfterInstall {
+			fmt.Println("Running script...")
+
+			if err := common.RunCommand(runBatPath, os.Args[1:]); err != nil {
+				fmt.Println("Error running script")
+				return err
+			}
+
+			fmt.Println("Script completed.")
+		} else {
+			fmt.Println("Please run the following command in the command line to run the script:")
+			fmt.Println(runBatPath)
+		}
+
 	}
+
+	return nil
+}
+
+func VerifyExtractionIntegrity(integrityData []byte, scriptExtractDir string) (error, bool) {
 
 	// these will be in the form of a json string, so we need to unmarshal them
 	var fileHashes []common.FileHash
 
 	// Unmarshal JSON string to slice of FileHash objects
-	err = json.Unmarshal(integrityData, &fileHashes)
+	err := json.Unmarshal(integrityData, &fileHashes)
 	if err != nil {
 		fmt.Println("Error unmarshalling JSON:", err)
-		return
+		return nil, false
 	}
 
 	// get the hashes of the extracted files
@@ -179,56 +265,12 @@ func bootstrap() {
 			fmt.Println(" - " + file)
 		}
 
-		if *settings.RunAfterInstall == false {
-			fmt.Println("Please rerun the installer to reinstall the environment.")
-			os.Remove("bootstrapped")
+		return nil, false
 
-			// quit the program with an error code
-			os.Exit(1000)
-		}
 	} else {
 		fmt.Println("Installation integrity validated successfully.")
 	}
-
-	// if main script is not set, exit, as there is nothing to run
-	if *settings.MainScript == "" {
-		fmt.Println("Files installed successfully. Exiting.")
-		return
-	} else {
-
-		// Create the run.bat
-		pythonExecutable := filepath.Join(pythonExtractDir, "python.exe")
-		mainScriptPath := path.Join(scriptExtractDir, *settings.MainScript)
-
-		// replace the placeholders in the runscript with the actual values
-		runScript = strings.ReplaceAll(runScript, "{{PYTHON_EXE}}", pythonExecutable)
-		runScript = strings.ReplaceAll(runScript, "{{MAIN_SCRIPT}}", mainScriptPath)
-		runScript = strings.ReplaceAll(runScript, "{{SCRIPTS_DIR}}", scriptExtractDir)
-
-		err = os.WriteFile("run.bat", []byte(runScript), 0644)
-
-		runBatPath, err := filepath.Abs("run.bat")
-		if err != nil {
-			fmt.Println("Error getting absolute path for run.bat:", err)
-			return
-		}
-
-		if *settings.RunAfterInstall {
-			fmt.Println("Running script...")
-
-			if err := common.RunCommand(runBatPath, os.Args[1:]); err != nil {
-				fmt.Println("Error running script:", err)
-				return
-			}
-
-			fmt.Println("Script completed.")
-		} else {
-			fmt.Println("Please run the following command in the command line to run the script:")
-			fmt.Println(runBatPath)
-		}
-
-	}
-
+	return err, true
 }
 
 func ValidateExecutableHash() (exit bool) {

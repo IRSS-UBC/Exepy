@@ -51,7 +51,6 @@ func writeManifest(w io.Writer, entries []ManifestEntry) error {
 		buf[offset] = entry.FileType
 		offset++
 
-		// Convert FilePath to bytes.
 		pathBytes := []byte(entry.FilePath)
 		pathLen := uint16(len(pathBytes))
 
@@ -68,7 +67,6 @@ func writeManifest(w io.Writer, entries []ManifestEntry) error {
 	binary.BigEndian.PutUint32(buf[offset:offset+4], manifestMagicNumber)
 	offset += 4
 
-	// Compute CRC32 over all bytes written so far.
 	crcValue := crc32.ChecksumIEEE(buf[:offset])
 	binary.BigEndian.PutUint32(buf[offset:offset+4], crcValue)
 	offset += 4
@@ -78,8 +76,6 @@ func writeManifest(w io.Writer, entries []ManifestEntry) error {
 	return err
 }
 
-// readManifest reads the manifest from the reader in a streaming fashion.
-// It reads each part sequentially while updating a CRC32 hash, and then verifies the stored CRC.
 func readManifest(r io.Reader) ([]ManifestEntry, error) {
 	h := crc32.NewIEEE()
 	tr := io.TeeReader(r, h)
@@ -103,7 +99,6 @@ func readManifest(r io.Reader) ([]ManifestEntry, error) {
 		return nil, fmt.Errorf("unsupported manifest version: %d", version)
 	}
 
-	// Prepare a slice to hold the entries.
 	entries := make([]ManifestEntry, 0, entryCount)
 
 	// Process each manifest entry.

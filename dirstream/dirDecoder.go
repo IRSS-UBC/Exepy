@@ -68,22 +68,15 @@ func (d *Decoder) Decode(r io.Reader) error {
 			return fmt.Errorf("Decode: error peeking magic number: %v", err)
 		}
 
-		fmt.Printf("Magic number: % x\n", magicBuf)
 		magic := binary.BigEndian.Uint32(magicBuf)
 
 		if magic == manifestMagicNumber {
 
-			println("End of stream detected. Exiting...")
-
 			// Read and process the manifest.
-			entries, err := readManifest(bufferedReader)
-			if err != nil {
-				return fmt.Errorf("Decode: error reading manifest: %v", err)
-			}
-
-			for _, entry := range entries {
-				fmt.Printf("Entry: %v\n", entry)
-			}
+			//entries, err := readManifest(bufferedReader)
+			//if err != nil {
+			//	return fmt.Errorf("Decode: error reading manifest: %v", err)
+			//}
 
 			break // Stop decoding after the manifest.
 		}
@@ -91,7 +84,7 @@ func (d *Decoder) Decode(r io.Reader) error {
 		// Read file header
 		fh, err := readHeader(bufferedReader)
 		if err == io.EOF {
-			break // End of stream.
+			break // No more data in the stream; stop decoding.
 		}
 
 		if err != nil {
@@ -112,7 +105,7 @@ func (d *Decoder) Decode(r io.Reader) error {
 			if err := os.MkdirAll(fullPath, os.FileMode(fh.FileMode)); err != nil {
 				return fmt.Errorf("Decode: error creating directory %s: %v", fullPath, err)
 			}
-			fmt.Printf("Decoded directory: %s\n", fullPath)
+			//fmt.Printf("Decoded directory: %s\n", fullPath)
 			continue
 		case fileTypeSymlink:
 			if fileInfo, err := os.Lstat(fullPath); err == nil { // Check if file exists
@@ -131,7 +124,7 @@ func (d *Decoder) Decode(r io.Reader) error {
 			if err := os.Symlink(fh.LinkTarget, fullPath); err != nil {
 				return fmt.Errorf("Decode: error creating symlink %s -> %s: %v", fullPath, fh.LinkTarget, err)
 			}
-			fmt.Printf("Decoded symlink: %s -> %s\n", fullPath, fh.LinkTarget)
+			//fmt.Printf("Decoded symlink: %s -> %s\n", fullPath, fh.LinkTarget)
 			continue
 		case fileTypeRegular:
 			file, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(fh.FileMode))
@@ -144,10 +137,8 @@ func (d *Decoder) Decode(r io.Reader) error {
 				return fmt.Errorf("Decode: error reading chunks for file %s: %v", fh.FilePath, err)
 			}
 			file.Close()
-			fmt.Printf("Decoded file: %s\n", fullPath)
+			//fmt.Printf("Decoded file: %s\n", fullPath)
 
-			file.Close()
-			fmt.Printf("Decoded file: %s\n", fullPath)
 			continue
 		default:
 			return fmt.Errorf("Decode: unknown file type for %s", fh.FilePath)

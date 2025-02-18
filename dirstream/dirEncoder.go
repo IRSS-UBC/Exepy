@@ -115,11 +115,6 @@ func (e *Encoder) Encode(fileList []string) (io.Reader, error) {
 					return
 				}
 				file.Close()
-				fmt.Printf("Encoded file: %s\n", relPath)
-			} else if fh.FileType == fileTypeDirectory {
-				fmt.Printf("Encoded directory: %s\n", relPath)
-			} else if fh.FileType == fileTypeSymlink {
-				fmt.Printf("Encoded symlink: %s -> %s\n", relPath, fh.LinkTarget)
 			}
 		}
 

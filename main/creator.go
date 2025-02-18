@@ -15,12 +15,12 @@ import (
 
 const settingsFileName = "exepy.json"
 
-func createInstaller() {
+func createInstaller() error {
 
 	settings, err := common.LoadOrSaveDefault(settingsFileName)
 	if err != nil {
 		fmt.Println("Error loading or saving settings file:", err.Error())
-		os.Exit(1)
+		return err
 	}
 
 	pythonScriptPath := path.Join(*settings.ScriptDir, *settings.MainScript)
@@ -29,51 +29,51 @@ func createInstaller() {
 	// check if payload directory exists
 	if !common.DoesPathExist(*settings.ScriptDir) {
 		println("Scripts directory does not exist: ", settings.ScriptDir)
-		return
+		return errors.New("Scripts directory does not exist")
 	}
 
 	// check if payload directory has the main file
 	if !common.DoesPathExist(pythonScriptPath) {
 		println("Main file does not exist: ", pythonScriptPath)
-		return
+		return errors.New("Main file does not exist")
 	}
 
 	// if requirements file is listed, check that it exists
 	if *settings.RequirementsFile != "" {
 		if !common.DoesPathExist(requirementsPath) {
 			println("Requirements file is listed in config but does not exist: ", requirementsPath)
-			return
+			return errors.New("Requirements file does not exist")
 		}
 	}
 
 	file, err := os.Create("bootstrap.exe")
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	defer file.Close()
 
 	pythonFile, wheelsFile, err := PreparePython(*settings)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	ignoredDirs := []string{"__pycache__", ".git", ".idea", ".vscode"}
 
 	PayloadHashes, err := common.ComputeDirectoryHashes(*settings.ScriptDir, ignoredDirs)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// convert the hashes to a json string
 	PayloadHashesJson, err := json.Marshal(PayloadHashes)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	PayloadFile, err := common.DirToStream(*settings.ScriptDir, ignoredDirs)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	SettingsFile, err := os.Open(settingsFileName)
@@ -82,7 +82,7 @@ func createInstaller() {
 	embedMap := createEmbedMap(pythonFile, PayloadFile, wheelsFile, SettingsFile, bytes.NewReader(PayloadHashesJson))
 
 	if err := writePythonExecutable(file, embedMap); err != nil {
-		return
+		return err
 	}
 
 	file.Close()
@@ -90,7 +90,7 @@ func createInstaller() {
 	outputExeHash, err := common.Md5SumFile(file.Name())
 
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	println("Output executable hash: ", outputExeHash, " saved to hash.txt")
@@ -102,6 +102,8 @@ func createInstaller() {
 	}
 
 	println("Embedded payload")
+
+	return nil
 
 }
 

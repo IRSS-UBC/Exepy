@@ -4,9 +4,30 @@ import (
 	_ "embed"
 	"fmt"
 	"github.com/maja42/ember"
+	"os"
 )
 
 func main() {
+
+	defer func() {
+		// Check if a panic occurred.
+		code := 0
+
+		if r := recover(); r != nil {
+			fmt.Println("Panic:", r)
+			code = 1
+		}
+
+		// Pause if launched from Explorer.
+		if isLaunchedFromExplorer() {
+			fmt.Print("Press any key to continue...")
+			var input string
+			// Wait for user input before exiting.
+			fmt.Scanln(&input)
+
+			os.Exit(code)
+		}
+	}()
 
 	embedded, err := checkIfEmbedded()
 	if err != nil {
@@ -15,18 +36,19 @@ func main() {
 	}
 
 	if embedded {
-		fmt.Println("Project embedded. Running in installer mode.")
-		bootstrap()
+		fmt.Println("Installing Python script...")
+		err := bootstrap()
+		if err != nil {
+			panic(err)
+		}
 	} else {
-		fmt.Println("Project not embedded. Running in creator mode.")
+		PrintHeader() // Only print the header if we're in creator mode.
+		// Not needed for installer as we don't want to be intrusive.
+
+		fmt.Println("No scripts have been embedded. Running in creator mode.")
 		createInstaller()
 	}
 
-	if isLaunchedFromExplorer() {
-		fmt.Print("Press any key to continue...")
-		var input string
-		fmt.Scanln(&input)
-	}
 }
 
 func checkIfEmbedded() (bool, error) {
@@ -45,4 +67,18 @@ func checkIfEmbedded() (bool, error) {
 	} else {
 		return true, nil
 	}
+}
+
+func PrintHeader() {
+	header := `
+ _____        ______      
+|  ___|       | ___ \     
+| |____  _____| |_/ /   _ 
+|  __\ \/ / _ \  __/ | | |
+| |___>  <  __/ |  | |_| |
+\____/_/\_\___\_|   \__, |
+                     __/ |
+                    |___/ 
+`
+	fmt.Println(header)
 }
