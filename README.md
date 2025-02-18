@@ -6,7 +6,7 @@ A straightforward tool for packaging your Python projects into standalone Window
 
 * **Effortless Distribution:** Share your Python applications with anyone, even users without Python installed. Exepy handles all dependencies for you.
 * **Offline Compatibility:** Your packaged executables can be configured to work without needing an active internet connection, as all required libraries can be bundled within.
-* **Unrestricted Use:** Exepy's public domain license (the Unlicense) allows you to copy, modify, and distribute your packaged projects for both personal and commercial purposes without limitations.
+* **Unrestricted Use:** Exepy's permissive licensing (MIT) allows you to copy, modify, and distribute your packaged projects for both personal and commercial purposes with minimal limitations.
 
 **Getting Started**
 
